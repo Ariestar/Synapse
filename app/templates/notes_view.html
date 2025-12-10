@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes 浏览</title>
+    <link rel="stylesheet" type="text/css" href="../static/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="../static/css/markdown.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true
+            },
+            options: {
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="../static/js/mathjax_helper.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="mathjax-script" defer></script>
+</head>
+<body class="bg-secondary">
+    <div 
+        x-data="noteViewer()"
+        x-init="init()"
+        class="layout p-xl"
+    >
+        <div class="toolbar flex gap-md mb-md justify-end">
+            <button 
+                class="btn btn-primary px-md py-sm rounded-md"
+                @click="copyMarkdown()"
+                x-show="!isEditing"
+            >复制 Markdown</button>
+            <button 
+                class="btn btn-secondary px-md py-sm rounded-md"
+                @click="reloadCurrent()"
+                x-show="!isEditing"
+            >刷新当前</button>
+            <button 
+                class="btn btn-secondary px-md py-sm rounded-md"
+                @click="enterEditMode()"
+                x-show="!isEditing && currentPath"
+            >编辑笔记</button>
+            <button 
+                class="btn btn-primary px-md py-sm rounded-md"
+                @click="saveNote()"
+                x-show="isEditing"
+            >保存</button>
+            <button 
+                class="btn btn-secondary px-md py-sm rounded-md"
+                @click="exitEditMode()"
+                x-show="isEditing"
+            >取消</button>
+        </div>
+        
+        <div class="content-card bg-primary rounded-xl p-xl shadow-lg max-w-5xl mx-auto">
+            <h1 class="text-2xl font-bold text-primary mb-md" x-text="title || '请选择笔记'"></h1>
+            <div class="mb-md">
+                <template x-for="tag in tags" :key="tag">
+                    <span class="tag bg-primary-light text-primary px-md py-xs rounded-full text-xs mr-sm mb-xs inline-flex" x-text="tag"></span>
+                </template>
+            </div>
+            <div class="text-xs text-secondary mb-md" x-text="currentPath || ''"></div>
+            
+            <!-- 预览模式 -->
+            <div 
+                x-show="!isEditing"
+                id="note-body" 
+                class="markdown-body leading-relaxed text-primary"
+            ></div>
+            
+            <!-- 编辑模式 -->
+            <div 
+                x-show="isEditing"
+                class="editor-wrapper mt-lg"
+            >
+                <textarea 
+                    x-model="editorContent"
+                    class="editor-textarea w-full min-h-96 p-md text-sm leading-normal border rounded-lg"
+                    style="font-family: 'SFMono-Regular','Consolas','Liberation Mono',monospace;"
+                ></textarea>
+            </div>
+            
+            <!-- 空状态 -->
+            <div 
+                x-show="!currentPath && !isEditing"
+                class="empty text-center text-secondary py-4xl"
+            >请从笔记列表页点击进入</div>
+        </div>
+    </div>
+
+    <script>
+        function noteViewer() {
+            return {
+                currentPath: null,
+                title: '',
+                tags: [],
+                editorContent: '',
+                isEditing: false,
+                originalContent: '',
+                
+                init() {
+                    const initPath = new URLSearchParams(location.search).get('path');
+                    if (initPath) {
+                        this.loadNote(initPath);
+                    }
+                },
+                
+                async loadNote(path) {
+                    if (!path) return;
+                    this.currentPath = path;
+                    try {
+                        const resp = await fetch(`/api/md/file?path=${encodeURIComponent(path)}`);
+                        if (!resp.ok) {
+                            alert('读取笔记失败');
+                            return;
+                        }
+                        const data = await resp.json();
+                        this.title = data.frontmatter?.title || path;
+                        this.tags = this.normalizeTags(data.frontmatter?.tags);
+                        this.originalContent = data.content || '';
+                        this.editorContent = this.originalContent;
+                        
+                        // 渲染 Markdown
+                        if (typeof renderMarkdownWithMath === 'function') {
+                            renderMarkdownWithMath(data.body || '', '#note-body');
+                        }
+                        
+                        this.exitEditMode();
+                    } catch (e) {
+                        alert('读取笔记时出错');
+                    }
+                },
+                
+                normalizeTags(tags) {
+                    if (!tags) return [];
+                    if (Array.isArray(tags)) return tags;
+                    if (typeof tags === 'string') return tags.split(/[,，\s]+/).filter(Boolean);
+                    return [];
+                },
+                
+                reloadCurrent() {
+                    if (this.currentPath) {
+                        this.loadNote(this.currentPath);
+                    }
+                },
+                
+                enterEditMode() {
+                    if (!this.currentPath) return;
+                    this.isEditing = true;
+                },
+                
+                exitEditMode() {
+                    this.isEditing = false;
+                    this.editorContent = this.originalContent;
+                },
+                
+                async saveNote() {
+                    if (!this.currentPath) return;
+                    try {
+                        const resp = await fetch('/api/md/file', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                path: this.currentPath, 
+                                content: this.editorContent 
+                            })
+                        });
+                        if (!resp.ok) {
+                            const text = await resp.text();
+                            alert(`保存失败: ${text}`);
+                            return;
+                        }
+                        await this.loadNote(this.currentPath);
+                        alert('已保存');
+                    } catch (e) {
+                        alert('保存失败，请稍后重试');
+                    }
+                },
+                
+                async copyMarkdown() {
+                    if (!this.originalContent) {
+                        alert('暂无内容');
+                        return;
+                    }
+                    try {
+                        await navigator.clipboard.writeText(this.originalContent);
+                        alert('已复制到剪贴板');
+                    } catch (e) {
+                        alert('复制失败');
+                    }
+                }
+            };
+        }
+    </script>
+    
+    <style>
+        .layout {
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        
+        .content-card h1 {
+            margin-top: 0;
+        }
+        
+        .markdown-body {
+            line-height: 1.7;
+            color: var(--color-text-primary);
+        }
+        
+        pre code {
+            background: var(--color-bg-muted);
+            border-radius: var(--radius-md);
+            padding: var(--spacing-md);
+            display: block;
+            overflow-x: auto;
+        }
+        
+        .editor-textarea {
+            box-sizing: border-box;
+            resize: vertical;
+        }
+    </style>
+</body>
+</html>

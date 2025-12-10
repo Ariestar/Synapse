@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', async function() {
     // 定义服务器的默认端口
-    const SERVER_PORT = 8000;
+    // 默认端口从后端环境传入，可在模板中注入 window.SERVER_PORT；无则回退 5000
+    const SERVER_PORT = window.SERVER_PORT || 5000;
 
     // 变量定义
     const chatMessages = document.getElementById('chat-messages');
@@ -65,6 +66,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     const closeNotesSearch = document.getElementById('close-notes-search');
     const notesSearchInput = document.getElementById('notes-search-input');
     const notesSearchResults = document.getElementById('notes-search-results');
+    const notesSearchAnswer = document.getElementById('notes-search-answer');
+    const notesSearchCitations = document.getElementById('notes-search-citations');
 
     // 检查元素是否存在再添加事件监听器
     if (clearHistoryBtn) {
@@ -97,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // temperatureInput.value = settings.temperature || 0.7;
         // maxTokensInput.value = settings.maxTokens || 2048;
         personaInput.value = settings.persona || '';
-        searchNotesCheckbox.checked = settings.searchNotes || false;
+        searchNotesCheckbox.checked = settings.searchNotes !== undefined ? settings.searchNotes : true;  // 默认开启
 
         // 加载模型列表
         const provider = providerSelect.value || 'bigmodel';
@@ -117,7 +120,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             // temperature: parseFloat(temperatureInput.value) || 0.7,
             // maxTokens: parseInt(maxTokensInput.value) || 2048,
             persona: personaInput.value.trim(),
-            searchNotes: searchNotesCheckbox.checked
+            searchNotes: searchNotesCheckbox.checked !== undefined ? searchNotesCheckbox.checked : true  // 默认开启
         };
         localStorage.setItem('llmSettings', JSON.stringify(settings));
     }
@@ -131,7 +134,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         temperatureInput.value = 0.7;
         maxTokensInput.value = 2048;
         personaInput.value = '';
-        searchNotesCheckbox.checked = false;
+        searchNotesCheckbox.checked = true;  // 默认开启
 
         // 重新加载默认提供商的模型
         loadModels('bigmodel').then(() => {
@@ -145,7 +148,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 从后端API获取提供商列表并填充下拉框
     async function loadProviders() {
         try {
-            const response = await fetch(`http://localhost:${SERVER_PORT}/list_providers`);
+            const response = await fetch(`/list_providers`);
             if (response.ok) {
                 const providers = await response.json();
                 providerSelect.innerHTML = ''; // 清空现有选项
@@ -204,7 +207,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const actualProvider = provider || 'bigmodel';
 
         try {
-            const response = await fetch(`http://localhost:${SERVER_PORT}/list_models?provider=${actualProvider}`);
+            const response = await fetch(`/list_models?provider=${actualProvider}`);
             if (response.ok) {
                 const models = await response.json();
                 apiModelInput.innerHTML = ''; // 清空现有选项
@@ -414,6 +417,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         // 使用Markdown解析器处理文本
         const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
         messageContent.innerHTML = renderMarkdown(text);
         messageDiv.appendChild(messageContent);
 
@@ -427,7 +431,113 @@ document.addEventListener('DOMContentLoaded', async function() {
         messageContainer.appendChild(messageDiv);
         chatMessages.appendChild(messageContainer);
         
+        // 自动滚动到底部
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 
+    // 创建笔记卡片（用于聊天消息中）
+    function createNoteCard(note) {
+        const card = document.createElement('div');
+        card.className = 'chat-note-card';
+        
+        const scoreText = note.score !== undefined ? note.score.toFixed(4) : (note.similarity ? note.similarity.toFixed(4) : 'N/A');
+        const pathText = note.rel_path || note.file_path || '未知路径';
+        const tags = Array.isArray(note.tags) && note.tags.length ? note.tags : [];
+        const contentPreview = (note.content || '').slice(0, 200);
+        
+        const cardHeader = document.createElement('div');
+        cardHeader.className = 'chat-note-card-header';
+        
+        const title = document.createElement('div');
+        title.className = 'chat-note-card-title';
+        title.textContent = note.title || '无标题';
+        cardHeader.appendChild(title);
+        
+        const score = document.createElement('span');
+        score.className = 'chat-note-card-score';
+        score.textContent = `相似度 ${scoreText}`;
+        cardHeader.appendChild(score);
+        
+        card.appendChild(cardHeader);
+        
+        const path = document.createElement('div');
+        path.className = 'chat-note-card-path';
+        path.textContent = pathText;
+        card.appendChild(path);
+        
+        const body = document.createElement('div');
+        body.className = 'chat-note-card-body';
+        body.textContent = contentPreview;
+        card.appendChild(body);
+        
+        if (tags.length > 0) {
+            const tagsContainer = document.createElement('div');
+            tagsContainer.className = 'chat-note-card-tags';
+            tags.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'chat-note-card-tag';
+                tagSpan.textContent = tag;
+                tagsContainer.appendChild(tagSpan);
+            });
+            card.appendChild(tagsContainer);
+        }
+        
+        // 点击卡片跳转到笔记详情页
+        card.addEventListener('click', () => {
+            const notePath = note.rel_path || note.file_path;
+            if (notePath) {
+                window.open(`/notes_view.html?path=${encodeURIComponent(notePath)}`, '_blank');
+            }
+        });
+        
+        return card;
+    }
+
+    // 检索笔记并返回结果（去重）
+    async function searchNotesForChat(query) {
+        try {
+            const response = await fetch('/api/rag/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    question: query,
+                    top_k: 10  // 检索更多，然后去重
+                })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                const contexts = result.contexts || [];
+                
+                // 根据文件路径去重
+                const seenPaths = new Set();
+                const uniqueNotes = [];
+                
+                for (const note of contexts) {
+                    const path = note.rel_path || note.file_path || '';
+                    if (path && !seenPaths.has(path)) {
+                        seenPaths.add(path);
+                        uniqueNotes.push(note);
+                    } else if (!path) {
+                        // 如果没有路径，也添加（避免丢失）
+                        uniqueNotes.push(note);
+                    }
+                    
+                    // 最多返回6条
+                    if (uniqueNotes.length >= 6) {
+                        break;
+                    }
+                }
+                
+                return uniqueNotes;
+            }
+            return [];
+        } catch (error) {
+            console.error('检索笔记失败:', error);
+            return [];
+        }
     }
 
     // 格式化时间
@@ -488,15 +598,44 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
-    async function generateResponse(userMessage) {
+    async function generateResponse(userMessage, relatedNotes = []) {
         const currentConversation = conversations.find(c => c.id === currentConversationId);
         if (!currentConversation) return "系统错误：找不到当前对话";
 
         // 获取保存的设置
         const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
 
+        // 如果有检索到的笔记，先显示笔记卡片在 AI 消息中
+        let botMessageContainer = null;
+        if (relatedNotes && relatedNotes.length > 0) {
+            // 创建 AI 消息容器（先显示笔记卡片）
+            botMessageContainer = document.createElement('div');
+            botMessageContainer.classList.add('message-container', 'bot');
+
+            const avatar = document.createElement('div');
+            avatar.classList.add('avatar', 'bot-avatar');
+            avatar.textContent = 'AI';
+            botMessageContainer.appendChild(avatar);
+
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', 'bot-message');
+
+            // 添加笔记卡片
+            const notesContainer = document.createElement('div');
+            notesContainer.className = 'chat-notes-container';
+            relatedNotes.forEach(note => {
+                const noteCard = createNoteCard(note);
+                notesContainer.appendChild(noteCard);
+            });
+            messageDiv.appendChild(notesContainer);
+
+            botMessageContainer.appendChild(messageDiv);
+            chatMessages.appendChild(botMessageContainer);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
         try {
-            const response = await fetch(`http://localhost:${SERVER_PORT}/stream_generate`, {
+            const response = await fetch(`/stream_generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -512,6 +651,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     persona: settings.persona,
                     search_notes: settings.searchNotes,
                     newMessage: userMessage,
+                    related_notes: relatedNotes,  // 传递检索到的笔记
                 })
             });
 
@@ -534,8 +674,6 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }
 
                 const { done, value } = await currentReader.read();
-                // console.log('value:', value);
-                // console.log('done:', done);
 
                 if (done) break;
 
@@ -559,10 +697,37 @@ document.addEventListener('DOMContentLoaded', async function() {
                         if (currentField === 'solution') {
                             updateStreamingMessage(solution, 'reasoner');
                         } else if (currentField === 'response') {
-                            updateStreamingMessage(responseText, 'bot');
+                            // 如果已经有消息容器（包含笔记卡片），更新它；否则创建新的
+                            if (botMessageContainer) {
+                                const messageDiv = botMessageContainer.querySelector('.message');
+                                if (!messageDiv.querySelector('.message-content')) {
+                                    const messageContent = document.createElement('div');
+                                    messageContent.className = 'message-content';
+                                    messageDiv.appendChild(messageContent);
+                                }
+                                const messageContent = messageDiv.querySelector('.message-content');
+                                messageContent.innerHTML = renderMarkdown(responseText);
+                            } else {
+                                updateStreamingMessage(responseText, 'bot');
+                            }
                         }
                     }
                 }
+            }
+
+            // 确保消息容器有完整的内容和时间戳
+            if (botMessageContainer) {
+                const messageDiv = botMessageContainer.querySelector('.message');
+                if (!messageDiv.querySelector('.message-content')) {
+                    const messageContent = document.createElement('div');
+                    messageContent.className = 'message-content';
+                    messageContent.innerHTML = renderMarkdown(responseText);
+                    messageDiv.appendChild(messageContent);
+                }
+                const timeDiv = document.createElement('div');
+                timeDiv.classList.add('message-time');
+                timeDiv.textContent = formatTime(new Date());
+                messageDiv.appendChild(timeDiv);
             }
 
             return {
@@ -597,13 +762,23 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message', `${sender}-message`);
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageDiv.appendChild(messageContent);
+            
             messageContainer.appendChild(messageDiv);
-
             chatMessages.appendChild(messageContainer);
         }
 
         const messageDiv = messageContainer.querySelector('.message');
-        messageDiv.innerHTML = renderMarkdown(text);
+        let messageContent = messageDiv.querySelector('.message-content');
+        if (!messageContent) {
+            messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageDiv.appendChild(messageContent);
+        }
+        messageContent.innerHTML = renderMarkdown(text);
 
         // 自动滚动到底部
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -620,7 +795,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const messageText = messageInput.value.trim();
         if (messageText === '') return;
 
-        // 添加用户消息
+        // 添加用户消息（不包含笔记卡片）
         addMessage(messageText, 'user');
         messageInput.value = '';
         messageInput.style.height = 'auto';
@@ -628,8 +803,23 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 更新当前对话
         updateCurrentConversation(messageText, 'user');
 
+        // 获取设置，检查是否启用笔记搜索
+        const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
+        let relatedNotes = [];
+
+        // 如果启用了笔记搜索，先检索相关笔记
+        if (settings.searchNotes) {
+            typingIndicator.style.display = 'flex';
+            typingIndicator.innerHTML = '<div style="color: var(--color-text-secondary);">正在检索相关笔记...</div>';
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            relatedNotes = await searchNotesForChat(messageText);
+            typingIndicator.style.display = 'none';
+        }
+
         // 显示"正在输入"指示器
         typingIndicator.style.display = 'flex';
+        typingIndicator.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
         chatMessages.scrollTop = chatMessages.scrollHeight;
 
         // 更改按钮为停止按钮
@@ -640,9 +830,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             </svg>
         `;
 
-        // 获取AI回复
+        // 获取AI回复（传入检索到的笔记）
         try {
-            const aiResponse = await generateResponse(messageText);
+            const aiResponse = await generateResponse(messageText, relatedNotes);
             typingIndicator.style.display = 'none';
 
             // 将AI回复添加到对话历史中
@@ -831,15 +1021,19 @@ document.addEventListener('DOMContentLoaded', async function() {
             saveNoteButton.title = '保存中...';
             saveNoteButton.disabled = true;
 
-            const response = await fetch('/api/note', {
+            // 构建完整的对话内容（包含问题和回答）
+            const fullContent = `## 问题\n\n${lastUserMessage.text}\n\n## 回答\n\n${cleanBotAnswer}`;
+
+            const response = await fetch('/api/md/file', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     title: title,
-                    content: content,
-                    tags: ['对话记录', 'AI问答']
+                    content: fullContent,
+                    tags: ['对话记录', 'AI问答'],
+                    subdir: 'Chat'  // 保存到 Chat 子目录
                 })
             });
 
@@ -848,7 +1042,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             saveNoteButton.disabled = false;
 
             if (response.ok) {
-                showNotification('对话已成功保存为笔记！', 'success');
+                const result = await response.json();
+                showNotification(`对话已成功保存为笔记：${result.path}`, 'success');
             } else {
                 const errorData = await response.json();
                 showNotification(`保存失败: ${errorData.error}`, 'error');
@@ -1123,73 +1318,118 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
-    // 搜索笔记
+    // 渲染 RAG 回答
+    function renderRagAnswer(text) {
+        if (!notesSearchAnswer) return;
+        const content = text || '未获取到回答';
+        notesSearchAnswer.innerHTML = `<div class="rag-answer">${content}</div>`;
+    }
+
+    // 渲染 RAG 引用
+    function renderRagCitations(citations) {
+        if (!notesSearchCitations) return;
+        if (!citations || citations.length === 0) {
+            notesSearchCitations.innerHTML = '<div class="no-results">暂无引用</div>';
+            return;
+        }
+        notesSearchCitations.innerHTML = '';
+        citations.forEach((item, idx) => {
+            const citation = document.createElement('div');
+            citation.className = 'rag-citation-item';
+            citation.innerHTML = `
+                <div class="citation-header">[${idx + 1}] ${item.title || '无标题'}</div>
+                <div class="citation-meta">${item.rel_path || item.file_path || '未知路径'} · 相似度: ${item.score !== undefined ? item.score.toFixed(4) : 'N/A'}</div>
+                <div class="citation-snippet">${item.snippet || ''}</div>
+            `;
+            notesSearchCitations.appendChild(citation);
+        });
+    }
+
+    // 搜索笔记并返回 RAG 回答
     async function searchNotesInStorage() {
         const query = notesSearchInput.value.trim();
         if (!query) {
             notesSearchResults.innerHTML = '<div class="no-results">请输入关键词搜索笔记</div>';
+            notesSearchAnswer.innerHTML = '<div class="no-results">请输入关键词后再搜索</div>';
+            notesSearchCitations.innerHTML = '<div class="no-results">暂无引用</div>';
             return;
         }
 
+        const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
+        const payload = {
+            question: query,
+            top_k: 12,
+            provider: settings.provider || 'bigmodel',
+            model: settings.modelName || undefined,
+            base_url: settings.apiUrl || undefined,
+            api_key: settings.apiKey || undefined,
+            persona: settings.persona || undefined,
+        };
+
         try {
-            notesSearchResults.innerHTML = '<div class="searching">搜索中...</div>';
-            
-            const response = await fetch('/api/note/search', {
+            notesSearchResults.innerHTML = '<div class="searching">检索笔记片段中...</div>';
+            notesSearchAnswer.innerHTML = '<div class="searching">生成回答中...</div>';
+            notesSearchCitations.innerHTML = '<div class="searching">整理引用中...</div>';
+
+            const response = await fetch('/api/rag/query', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ 
-                    query: query,
-                    top_k: 10
-                })
+                body: JSON.stringify(payload)
             });
 
             if (response.ok) {
-                const results = await response.json();
-                renderNotesSearchResults(results);
+                const result = await response.json();
+                renderRagAnswer(result.answer);
+                renderRagCitations(result.citations || []);
+                renderNotesSearchResults(result.contexts || []);
             } else {
+                const errText = await response.text();
+                notesSearchAnswer.innerHTML = `<div class="no-results">搜索失败：${errText}</div>`;
+                notesSearchCitations.innerHTML = '<div class="no-results">暂无引用</div>';
                 notesSearchResults.innerHTML = '<div class="no-results">搜索失败，请稍后重试</div>';
-                console.error('搜索笔记失败');
+                console.error('搜索笔记失败', errText);
             }
         } catch (error) {
+            notesSearchAnswer.innerHTML = '<div class="no-results">搜索出错，请稍后重试</div>';
+            notesSearchCitations.innerHTML = '<div class="no-results">暂无引用</div>';
             notesSearchResults.innerHTML = '<div class="no-results">搜索出错，请稍后重试</div>';
             console.error('搜索笔记时出错:', error);
         }
     }
 
-    // 渲染笔记搜索结果
+    // 渲染笔记搜索结果（检索片段）
     function renderNotesSearchResults(notes) {
         if (!notes || notes.length === 0) {
-            notesSearchResults.innerHTML = '<div class="no-results">未找到相关笔记</div>';
+            notesSearchResults.innerHTML = '<div class="no-results">未找到相关笔记片段</div>';
             return;
         }
 
         notesSearchResults.innerHTML = '';
         notes.forEach(note => {
-            const noteItem = document.createElement('div');
-            noteItem.className = 'note-search-item';
-            noteItem.innerHTML = `
-                <div class="note-search-item-header">
-                    <h4>${note.title || '无标题'}</h4>
-                    <span class="similarity-score">相似度: ${note.similarity ? note.similarity.toFixed(4) : 'N/A'}</span>
+            const noteCard = document.createElement('div');
+            noteCard.className = 'note-search-card';
+            const scoreText = note.score !== undefined ? note.score.toFixed(4) : (note.similarity ? note.similarity.toFixed(4) : 'N/A');
+            const pathText = note.rel_path || note.file_path || '未知路径';
+            const tags = Array.isArray(note.tags) && note.tags.length ? note.tags : ['无标签'];
+            const contentPreview = (note.content || '').slice(0, 240);
+            const tagBadges = tags.map(tag => `<span class="note-search-card-tag">${tag}</span>`).join('');
+            noteCard.innerHTML = `
+                <div class="note-search-card-header">
+                    <div class="note-search-card-title">${note.title || '无标题'}</div>
+                    <span class="note-search-card-score">相似度 ${scoreText}</span>
                 </div>
-                <div class="note-search-item-content">
-                    <p>${note.content}</p>
-                </div>
-                <div class="note-search-item-meta">
-                    <span>创建时间: ${note.created_at ? new Date(note.created_at).toLocaleString() : 'N/A'}</span>
-                    <span>更新时间: ${note.updated_at ? new Date(note.updated_at).toLocaleString() : 'N/A'}</span>
-                </div>
+                <div class="note-search-card-path">${pathText}</div>
+                <div class="note-search-card-body">${contentPreview}</div>
+                <div class="note-search-card-tags">${tagBadges}</div>
             `;
             
-            // 添加点击事件，取消跳转，仅关闭搜索模态框
-            noteItem.addEventListener('click', () => {
-                // 关闭搜索模态框
+            noteCard.addEventListener('click', () => {
                 hideNotesSearchModal();
             });
             
-            notesSearchResults.appendChild(noteItem);
+            notesSearchResults.appendChild(noteCard);
         });
     }
 
@@ -1297,34 +1537,72 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Markdown渲染函数
     function renderMarkdown(text) {
-        // 简单的Markdown解析实现
         if (!text) return '';
         
-        // 转义HTML特殊字符
+        // 如果 marked 库已加载，使用它来渲染
+        if (typeof marked !== 'undefined') {
+            // 配置 marked
+            marked.setOptions({
+                gfm: true,  // GitHub Flavored Markdown
+                breaks: true,  // 换行符转换为 <br>
+                mangle: false,  // 不混淆邮箱地址
+                headerIds: false,  // 不生成标题 ID
+                highlight: function(code, lang) {
+                    // 如果 highlight.js 已加载，使用它进行代码高亮
+                    if (typeof hljs !== 'undefined') {
+                        if (lang && hljs.getLanguage(lang)) {
+                            try {
+                                return hljs.highlight(code, { language: lang }).value;
+                            } catch (err) {
+                                return hljs.highlightAuto(code).value;
+                            }
+                        }
+                        return hljs.highlightAuto(code).value;
+                    }
+                    return code;
+                }
+            });
+            
+            // 使用 DOMPurify 清理 HTML（如果可用）
+            let html = marked.parse(text);
+            if (typeof DOMPurify !== 'undefined') {
+                html = DOMPurify.sanitize(html, {
+                    USE_PROFILES: { html: true },
+                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'del', 'ins'],
+                    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'target', 'rel']
+                });
+            }
+            
+            // 延迟执行代码高亮（如果 highlight.js 已加载）
+            setTimeout(() => {
+                if (typeof hljs !== 'undefined') {
+                    const containers = document.querySelectorAll('.message-content pre code');
+                    containers.forEach(block => {
+                        hljs.highlightElement(block);
+                    });
+                }
+            }, 0);
+            
+            return html;
+        }
+        
+        // 降级方案：简单的正则表达式实现
         let escapedText = text.replace(/&/g, '&amp;')
                               .replace(/</g, '&lt;')
                               .replace(/>/g, '&gt;');
         
-        // 处理代码块 (``code```)
+        // 处理代码块
         escapedText = escapedText.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-        
-        // 处理行内代码 (`code`)
         escapedText = escapedText.replace(/`([^`]+)`/g, '<code>$1</code>');
         
-        // 处理粗体 (**bold** 或 __bold__)
+        // 处理粗体和斜体
         escapedText = escapedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         escapedText = escapedText.replace(/__(.*?)__/g, '<strong>$1</strong>');
-        
-        // 处理斜体 (*italic* 或 _italic_)
         escapedText = escapedText.replace(/\*(.*?)\*/g, '<em>$1</em>');
         escapedText = escapedText.replace(/_(.*?)_/g, '<em>$1</em>');
         
-        // 处理无序列表 (以-或*开头的行)
-        escapedText = escapedText.replace(/^[\t ]*[-*][\t ]+(.*)$/gm, '<li>$1</li>');
-        escapedText = escapedText.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-        
-        // 处理链接 [text](url)
-        escapedText = escapedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+        // 处理链接
+        escapedText = escapedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
         
         // 处理换行
         escapedText = escapedText.replace(/\n/g, '<br>');

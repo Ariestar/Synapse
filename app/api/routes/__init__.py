@@ -26,3 +26,8 @@ def notes():
 def home_redirect():
     """重定向到首页"""
     return render_template('home.html')
+
+@main_bp.route('/notes_view.html')
+def notes_view():
+    """笔记阅览页（列表 + 内容区）"""
+    return render_template('notes_view.html')

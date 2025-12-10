@@ -5,13 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatBox - AI聊天室</title>
     <link rel="stylesheet" type="text/css" href="../static/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="../static/css/markdown.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
-<body>
+<body 
+    x-data="chatApp()"
+    x-init="init()"
+>
     <!-- 侧边栏 -->
-    <div class="sidebar" id="sidebar">
+    <div 
+        class="sidebar"
+        :class="{ 'active': sidebarOpen }"
+    >
         <div class="sidebar-header">
             <div class="sidebar-title">导航</div>
-            <button class="close-sidebar" id="close-sidebar">☰</button>
+            <button class="close-sidebar" @click="sidebarOpen = false">☰</button>
         </div>
         <div class="sidebar-nav">
             <a href="home.html" class="nav-item">🏠 首页</a>
@@ -21,130 +33,208 @@
         <div class="sidebar-section">
             <div class="sidebar-section-title">API 设置</div>
             <div class="sidebar-nav">
-                <button class="nav-item" id="api-settings-btn">⚙️ API配置</button>
+                <button class="nav-item" @click="settingsOpen = true">⚙️ API配置</button>
             </div>
         </div>
         <div class="sidebar-section">
             <div class="sidebar-section-title">搜索笔记</div>
             <div class="sidebar-nav">
-                <button class="nav-item" id="search-notes-btn">🔍 搜索笔记</button>
+                <button class="nav-item" @click="$dispatch('open-rag-search')">🔍 搜索笔记</button>
             </div>
         </div>
-<!--        <div class="sidebar-section">-->
-<!--            <div class="sidebar-section-title">历史对话</div>-->
-<!--            <div class="history-list" id="history-list"></div>-->
-<!--        </div>-->
         <div class="sidebar-footer">
-            <button class="new-chat-btn" id="new-chat-btn">开始新对话</button>
+            <button class="new-chat-btn" @click="createNewChat()">开始新对话</button>
         </div>
     </div>
 
     <!-- 设置弹窗 -->
-    <div class="settings-modal" id="settings-modal">
-        <div class="settings-content">
-            <div class="settings-header">
-                <h3 class="settings-title">API 设置</h3>
-                <button class="close-settings" id="close-settings">&times;</button>
+    <div 
+        class="settings-modal"
+        :class="{ 'active': settingsOpen }"
+        @click.self="settingsOpen = false"
+        @keydown.escape.window="settingsOpen = false"
+        x-show="settingsOpen"
+        x-cloak
+    >
+        <div class="settings-content bg-primary rounded-xl shadow-xl">
+            <div class="settings-header flex justify-between items-center p-xl border-b">
+                <h3 class="settings-title text-xl font-semibold text-primary">API 设置</h3>
+                <button class="close-settings text-2xl text-muted" @click="settingsOpen = false">&times;</button>
             </div>
-            <form class="settings-form" id="settings-form">
-                <div class="form-group">
-                    <label for="provider-select" class="form-label">AI 提供商</label>
-                    <select id="provider-select" class="form-input">
+            <form class="settings-form p-xl" @submit.prevent="saveSettings()">
+                <div class="form-group mb-lg">
+                    <label for="provider-select" class="form-label block mb-sm text-sm font-medium text-primary">AI 提供商</label>
+                    <select 
+                        id="provider-select" 
+                        class="form-input w-full p-md border rounded-md"
+                        x-model="settings.provider"
+                        @change="loadModels($event.target.value)"
+                    >
                         <option value="bigmodel">智谱AI (默认)</option>
                         <option value="deepseek">DeepSeek</option>
                         <option value="openai">OpenAI</option>
                         <option value="qwen">通义千问</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label for="api-url" class="form-label">API 地址</label>
-                    <input type="text" id="api-url" class="form-input" placeholder="https://api.example.com/v1">
+                <div class="form-group mb-lg">
+                    <label for="api-url" class="form-label block mb-sm text-sm font-medium text-primary">API 地址</label>
+                    <input 
+                        type="text" 
+                        id="api-url" 
+                        class="form-input w-full p-md border rounded-md"
+                        x-model="settings.apiUrl"
+                        placeholder="https://api.example.com/v1"
+                    >
                 </div>
-                <div class="form-group">
-                    <label for="api-key" class="form-label">API 密钥</label>
-                    <input type="password" id="api-key" class="form-input" placeholder="输入您的API密钥">
+                <div class="form-group mb-lg">
+                    <label for="api-key" class="form-label block mb-sm text-sm font-medium text-primary">API 密钥</label>
+                    <input 
+                        type="password" 
+                        id="api-key" 
+                        class="form-input w-full p-md border rounded-md"
+                        x-model="settings.apiKey"
+                        placeholder="输入您的API密钥"
+                    >
                 </div>
-                <div class="form-group">
-                    <label for="model-name" class="form-label">模型名称</label>
-                    <select id="model-name" class="form-input">
-                        <!-- 模型选项将通过JavaScript动态加载 -->
-                        <option value="glm-4-flash">GLM-4 Flash (默认)</option><option value="glm-4-air">GLM-4 Air</option><option value="glm-4-airx">GLM-4 AirX</option><option value="glm-4-long">GLM-4 Long</option></select>
-
+                <div class="form-group mb-lg">
+                    <label for="model-name" class="form-label block mb-sm text-sm font-medium text-primary">模型名称</label>
+                    <select 
+                        id="model-name" 
+                        class="form-input w-full p-md border rounded-md"
+                        x-model="settings.modelName"
+                    >
+                        <option value="">请选择模型</option>
+                        <template x-for="model in models" :key="model.id">
+                            <option :value="model.id" x-text="model.name"></option>
+                        </template>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label for="persona" class="form-label">AI 角色设定</label>
-                    <textarea id="persona" class="form-input" placeholder="例如：你是一个专业的心理咨询师..." rows="3"></textarea>
+                <div class="form-group mb-lg">
+                    <label for="persona" class="form-label block mb-sm text-sm font-medium text-primary">AI 角色设定</label>
+                    <textarea 
+                        id="persona" 
+                        class="form-input w-full p-md border rounded-md"
+                        x-model="settings.persona"
+                        placeholder="例如：你是一个专业的心理咨询师..."
+                        rows="3"
+                    ></textarea>
                 </div>
-                <div class="form-group">
-                    <label for="search-notes" class="form-label">
-                        <input type="checkbox" id="search-notes">
-                        启用笔记搜索功能
+                <div class="form-group mb-lg">
+                    <label class="flex items-center gap-sm">
+                        <input type="checkbox" x-model="settings.searchNotes">
+                        <span class="text-sm text-primary">启用笔记搜索功能</span>
                     </label>
                 </div>
-<!--                <div class="form-group">-->
-<!--                    <label for="temperature" class="form-label">温度 (0-1)</label>-->
-<!--                    <input type="number" id="temperature" class="form-input" placeholder="0.7" min="0" max="1" step="0.1" value="0.7">-->
-<!--                </div>-->
-<!--                <div class="form-group">-->
-<!--                    <label for="max-tokens" class="form-label">最大令牌数</label>-->
-<!--                    <input type="number" id="max-tokens" class="form-input" placeholder="2048" min="1" max="8192" value="2048">-->
-<!--                </div>-->
             </form>
-            <div class="settings-footer">
-                <button type="button" class="btn btn-secondary" id="clear-settings">清除</button>
-                <button type="button" class="btn btn-primary" id="save-settings">保存</button>
+            <div class="settings-footer flex justify-end gap-md p-xl border-t">
+                <button 
+                    type="button" 
+                    class="btn btn-secondary px-lg py-md rounded-md"
+                    @click="clearSettings()"
+                >清除</button>
+                <button 
+                    type="button" 
+                    class="btn btn-primary px-lg py-md rounded-md"
+                    @click="saveSettings()"
+                >保存</button>
             </div>
         </div>
     </div>
 
-    <!-- 笔记搜索弹窗 -->
-    <div class="notes-search-modal" id="notes-search-modal">
-        <div class="notes-search-content">
+    <!-- 笔记搜索弹窗 - 复用 notes.html 的组件 -->
+    <div 
+        x-data="ragSearch()" 
+        x-show="isOpen" 
+        @keydown.escape.window="close()"
+        @open-rag-search.window="open()"
+        class="notes-search-modal"
+        :class="{ 'active': isOpen }"
+        style="display: none;"
+        x-cloak
+    >
+        <div class="notes-search-content" @click.away="close()">
             <div class="notes-search-header">
                 <h3 class="notes-search-title">搜索笔记</h3>
-                <button class="close-notes-search" id="close-notes-search">&times;</button>
+                <button class="close-notes-search" @click="close()">&times;</button>
             </div>
             <div class="notes-search-body">
                 <div class="search-box">
-                    <input type="text" id="notes-search-input" placeholder="输入关键词搜索笔记...">
-                    <button id="search-notes-submit-btn">搜索</button>
+                    <input 
+                        type="text" 
+                        x-model="query"
+                        @keydown.enter="search()"
+                        placeholder="输入问题或关键词..."
+                        class="flex-1"
+                    >
+                    <button @click="search()" :disabled="loading">搜索</button>
                 </div>
-                <div class="notes-search-results" id="notes-search-results">
-                    <div class="no-results">请输入关键词搜索笔记</div>
+                
+                <div class="rag-answer-container" x-show="answer">
+                    <h4 class="text-sm font-semibold mb-md text-primary">AI 回答</h4>
+                    <div class="rag-answer bg-muted p-lg rounded-lg" x-html="safeHtml(answer)"></div>
                 </div>
+                
+                <div class="rag-citations-container" x-show="citations.length > 0">
+                    <h4 class="text-sm font-semibold mb-md text-primary">引用来源</h4>
+                    <div class="flex flex-col gap-sm">
+                        <template x-for="(citation, idx) in citations" :key="idx">
+                            <div class="rag-citation-item bg-muted p-md rounded-lg">
+                                <div class="font-semibold text-primary mb-xs" x-text="`[${idx + 1}] ${citation.title || '无标题'}`"></div>
+                                <div class="text-sm text-secondary mb-xs" x-text="`${citation.rel_path || citation.file_path || '未知路径'} · 相似度: ${citation.score !== undefined ? citation.score.toFixed(4) : 'N/A'}`"></div>
+                                <div class="text-sm text-secondary" x-text="citation.snippet || ''"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <div class="notes-search-results" x-show="results.length > 0">
+                    <template x-for="(note, idx) in results" :key="idx">
+                        <div class="note-search-card" @click="close()">
+                            <div class="note-search-card-header">
+                                <div class="note-search-card-title" x-text="note.title || '无标题'"></div>
+                                <span class="note-search-card-score" x-text="`相似度 ${note.score !== undefined ? note.score.toFixed(4) : (note.similarity ? note.similarity.toFixed(4) : 'N/A')}`"></span>
+                            </div>
+                            <div class="note-search-card-path" x-text="note.rel_path || note.file_path || '未知路径'"></div>
+                            <div class="note-search-card-body" x-text="(note.content || '').slice(0, 240)"></div>
+                            <div class="note-search-card-tags">
+                                <template x-for="tag in (Array.isArray(note.tags) && note.tags.length ? note.tags : ['无标签'])" :key="tag">
+                                    <span class="note-search-card-tag" x-text="tag"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <div x-show="loading" class="text-center py-xl text-secondary">检索中...</div>
+                <div x-show="!loading && !query && results.length === 0" class="text-center py-xl text-muted">请输入关键词搜索笔记</div>
             </div>
         </div>
     </div>
 
-    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <div 
+        class="sidebar-overlay"
+        :class="{ 'active': sidebarOpen }"
+        @click="sidebarOpen = false"
+    ></div>
 
     <!-- 主内容区域 -->
-    <div class="main-content" id="main-content">
-        <!-- 顶部导航栏 -->
+    <div 
+        class="main-content"
+        :class="{ 'sidebar-open': sidebarOpen }"
+    >
         <header class="header-container">
             <div class="top-navbar">
-                <div class="navbar-left">
-                    <button class="menu-btn" id="menu-btn" title="菜单">
+                <div class="navbar-left flex items-center gap-md">
+                    <button class="menu-btn" @click="sidebarOpen = !sidebarOpen" title="菜单">
                         <img src="../static/img/menu.svg" alt="菜单" width="24" height="24">
                     </button>
                     <div class="title">ChatBox - AI聊天室</div>
                 </div>
-<!--                <div class="navbar-right">-->
-<!--                    <button class="menu-btn" id="search-notes-trigger" title="搜索笔记">-->
-<!--                        <img src="../static/img/search.svg" alt="搜索笔记" width="24" height="24">-->
-<!--                    </button>-->
-<!--                    <button class="menu-btn" id="settings-trigger" title="设置">-->
-<!--                        <img src="../static/img/a-more2.svg" alt="更多" width="24" height="24">-->
-<!--                    </button>-->
-<!--                </div>-->
             </div>
         </header>
 
-        <!-- 主聊天区域 -->
         <main class="chat-main">
             <div class="chat-container">
-                <!-- 聊天消息区域 -->
                 <div class="chat-messages-wrapper">
                     <div class="chat-messages" id="chat-messages">
                         <div class="message-container bot">
@@ -164,17 +254,49 @@
                     </div>
                 </div>
 
-                <!-- 输入区域 -->
                 <div class="input-area-wrapper">
+                    <!-- 工具栏：检索开关 -->
+                    <div class="input-toolbar">
+                        <button 
+                            class="toolbar-btn"
+                            :class="{ 'active': settings.searchNotes }"
+                            @click="toggleSearchNotes()"
+                            title="笔记检索"
+                        >
+                            <svg class="toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span class="toolbar-text">笔记检索</span>
+                        </button>
+                    </div>
+                    
                     <div class="input-area">
-                        <textarea class="message-input" id="message-input" placeholder="向 AI 发送消息..." rows="1"></textarea>
-                        <button class="send-button" id="send-button" title="发送消息">
+                        <textarea 
+                            class="message-input" 
+                            id="message-input" 
+                            placeholder="向 AI 发送消息..." 
+                            rows="1"
+                            @keydown.enter.exact.prevent="sendMessage()"
+                            @input="autoResize($el)"
+                        ></textarea>
+                        <button 
+                            class="send-button" 
+                            id="send-button" 
+                            title="发送消息"
+                            @click="sendMessage()"
+                        >
                             <svg class="send-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </button>
-                        <button class="save-note-button" id="save-note-button" title="保存最后问答为笔记 (Ctrl+S)">
+                        <button 
+                            class="save-note-button" 
+                            id="save-note-button" 
+                            title="保存最后问答为笔记 (Ctrl+S)"
+                            @click="saveConversationAsNote()"
+                        >
                             <svg class="save-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 <polyline points="17 21 17 13 7 13 7 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -183,12 +305,235 @@
                         </button>
                     </div>
                 </div>
-                
-
             </div>
         </main>
     </div>
 
+    <script>
+        // Alpine.js 组件
+        function chatApp() {
+            return {
+                sidebarOpen: false,
+                settingsOpen: false,
+                settings: {
+                    provider: 'bigmodel',
+                    apiUrl: '',
+                    apiKey: '',
+                    modelName: '',
+                    persona: '',
+                    searchNotes: true  // 默认开启检索功能
+                },
+                models: [],
+                
+                init() {
+                    this.loadSettings();
+                    this.loadModels(this.settings.provider);
+                },
+                
+                loadSettings() {
+                    const saved = JSON.parse(localStorage.getItem('llmSettings')) || {};
+                    // 如果之前没有保存过 searchNotes，默认开启
+                    if (saved.searchNotes === undefined) {
+                        saved.searchNotes = true;
+                    }
+                    this.settings = { ...this.settings, ...saved };
+                },
+                
+                toggleSearchNotes() {
+                    this.settings.searchNotes = !this.settings.searchNotes;
+                    localStorage.setItem('llmSettings', JSON.stringify(this.settings));
+                    this.showNotification(
+                        this.settings.searchNotes ? '笔记检索已开启' : '笔记检索已关闭',
+                        'info'
+                    );
+                },
+                
+                async loadModels(provider) {
+                    if (!provider) provider = 'bigmodel';
+                    try {
+                        const response = await fetch(`/list_models?provider=${provider}`);
+                        if (response.ok) {
+                            this.models = await response.json();
+                        }
+                    } catch (error) {
+                        console.error('加载模型列表失败:', error);
+                        this.models = [];
+                    }
+                },
+                
+                saveSettings() {
+                    localStorage.setItem('llmSettings', JSON.stringify(this.settings));
+                    this.settingsOpen = false;
+                    this.showNotification('设置已保存', 'success');
+                },
+                
+                clearSettings() {
+                    localStorage.removeItem('llmSettings');
+                    this.settings = {
+                        provider: 'bigmodel',
+                        apiUrl: '',
+                        apiKey: '',
+                        modelName: '',
+                        persona: '',
+                        searchNotes: true  // 默认开启检索功能
+                    };
+                    this.showNotification('设置已清除', 'info');
+                },
+                
+                createNewChat() {
+                    if (window.createNewConversation) {
+                        window.createNewConversation();
+                    }
+                    this.sidebarOpen = false;
+                },
+                
+                sendMessage() {
+                    if (window.sendMessage) {
+                        window.sendMessage();
+                    }
+                },
+                
+                saveConversationAsNote() {
+                    if (window.saveConversationAsNote) {
+                        window.saveConversationAsNote();
+                    }
+                },
+                
+                autoResize(textarea) {
+                    textarea.style.height = 'auto';
+                    textarea.style.height = textarea.scrollHeight + 'px';
+                },
+                
+                showNotification(message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.className = `notification notification-${type}`;
+                    notification.textContent = message;
+                    notification.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        padding: 15px 20px;
+                        border-radius: 5px;
+                        color: white;
+                        font-weight: bold;
+                        z-index: 10000;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                        transform: translateX(100%);
+                        transition: transform 0.3s ease-in-out;
+                    `;
+                    
+                    const colors = {
+                        success: '#4CAF50',
+                        error: '#f44336',
+                        warning: '#ff9800',
+                        info: '#2196F3'
+                    };
+                    notification.style.backgroundColor = colors[type] || colors.info;
+                    
+                    document.body.appendChild(notification);
+                    setTimeout(() => notification.style.transform = 'translateX(0)', 10);
+                    setTimeout(() => {
+                        notification.style.transform = 'translateX(100%)';
+                        setTimeout(() => notification.remove(), 300);
+                    }, 3000);
+                }
+            };
+        }
+        
+        // RAG 搜索组件（复用 notes.html 的）
+        function ragSearch() {
+            return {
+                isOpen: false,
+                query: '',
+                loading: false,
+                answer: '',
+                citations: [],
+                results: [],
+                
+                open() {
+                    this.isOpen = true;
+                    this.query = '';
+                    this.answer = '';
+                    this.citations = [];
+                    this.results = [];
+                    this.$nextTick(() => {
+                        const input = this.$el.querySelector('input[type="text"]');
+                        if (input) input.focus();
+                    });
+                },
+                
+                close() {
+                    this.isOpen = false;
+                },
+                
+                safeHtml(text) {
+                    if (!text) return '';
+                    if (typeof DOMPurify !== 'undefined') {
+                        return DOMPurify.sanitize(text);
+                    }
+                    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                },
+                
+                async search() {
+                    const query = this.query.trim();
+                    if (!query) {
+                        this.answer = '';
+                        this.citations = [];
+                        this.results = [];
+                        return;
+                    }
+                    
+                    this.loading = true;
+                    this.answer = '';
+                    this.citations = [];
+                    this.results = [];
+                    
+                    try {
+                        const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
+                        const response = await fetch('/api/rag/query', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                question: query,
+                                top_k: 12,
+                                provider: settings.provider || 'bigmodel',
+                                model: settings.modelName || undefined,
+                                base_url: settings.apiUrl || undefined,
+                                api_key: settings.apiKey || undefined,
+                                persona: settings.persona || undefined,
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            this.answer = result.answer || '';
+                            this.citations = result.citations || [];
+                            this.results = result.contexts || [];
+                        } else {
+                            const errText = await response.text();
+                            this.answer = `搜索失败：${errText}`;
+                            this.citations = [];
+                            this.results = [];
+                        }
+                    } catch (error) {
+                        this.answer = '搜索出错，请稍后重试';
+                        this.citations = [];
+                        this.results = [];
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            };
+        }
+    </script>
+    
+    <style>
+        [x-cloak] { display: none !important; }
+        .rag-answer-container, .rag-citations-container {
+            margin-bottom: var(--spacing-lg);
+        }
+    </style>
+    
     <script src="../static/js/scripts.js"></script>
 </body>
 </html>

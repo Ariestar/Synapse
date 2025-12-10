@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notes 笔记本 - KingStudy</title>
     <link rel="stylesheet" type="text/css" href="../static/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="../static/css/markdown.css">
+    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
 </head>
 <body>
     <!-- 侧边栏 -->
@@ -19,8 +27,8 @@
             <a href="notes.html" class="nav-item active">📝 笔记本</a>
         </div>
 
-        <div class="sidebar-footer">
-            <button class="new-chat-btn" id="new-note-btn">+ 新建笔记</button>
+        <div class="sidebar-footer" x-data>
+            <button class="new-chat-btn" @click="$dispatch('open-new-note')">+ 新建笔记</button>
         </div>
     </div>
 
@@ -49,10 +57,15 @@
             </div>
         </header>
 
-        <div class="container">
+        <div class="container" x-data="notesPage()">
             <div class="controls">
                 <div class="search-box">
                     <input type="text" id="search-notes" placeholder="搜索笔记...">
+                    <button 
+                        class="btn btn-primary" 
+                        id="open-notes-search"
+                        @click="$dispatch('open-rag-search')"
+                    >智能检索</button>
                 </div>
             </div>
             
@@ -60,15 +73,15 @@
                 <!-- 笔记将会通过JavaScript动态加载 -->
                 <div class="empty-state">
                     <p>暂无笔记</p>
-                    <button class="new-note-btn" id="create-first-note">创建第一篇笔记</button>
+                    <button class="new-note-btn" @click="openNewNoteModal()">创建第一篇笔记</button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- 查看笔记模态框 -->
-    <div class="settings-modal" id="view-note-modal">
-        <div class="settings-content">
+    <div class="settings-modal" id="view-note-modal" style="display: none;">
+        <div class="settings-content" onclick="event.stopPropagation()">
             <div class="settings-header">
                 <h2 class="settings-title" id="view-note-title">查看笔记</h2>
                 <button class="close-settings" id="close-view-modal">&times;</button>
@@ -80,7 +93,7 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">内容</label>
-                    <div id="view-note-content" class="view-content"></div>
+                    <div id="view-note-content" class="view-content markdown-body"></div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">标签</label>
@@ -93,97 +106,408 @@
             </div>
             <div class="settings-footer">
                 <button class="btn btn-secondary" id="close-view-note">关闭</button>
-<!--                <button class="btn btn-primary" id="edit-from-view">编辑</button>-->
-<!--                <button class="btn btn-danger" id="delete-note">删除</button>-->
+                <button class="btn btn-primary" id="copy-markdown-btn">复制 Markdown</button>
+                <button class="btn btn-secondary" id="toggle-editor-btn">打开富文本编辑</button>
             </div>
         </div>
     </div>
 
-    <!-- 新建/编辑笔记模态框 -->
-    <div class="settings-modal" id="note-modal">
-        <div class="settings-content">
+    <!-- 新建笔记弹窗 -->
+    <div 
+        x-data="newNoteModal()"
+        x-show="isOpen"
+        @keydown.escape.window="close()"
+        @open-new-note.window="open()"
+        class="settings-modal"
+        x-cloak
+    >
+        <div class="settings-content" @click.stop>
             <div class="settings-header">
-                <h2 class="settings-title" id="modal-title">新建笔记</h2>
-                <button class="close-settings" id="close-modal">&times;</button>
+                <h2 class="settings-title">新建笔记</h2>
+                <button class="close-settings" @click="close()">&times;</button>
             </div>
             <div class="settings-form">
-                <form id="note-form">
-                    <input type="hidden" id="note-id">
-                    <div class="form-group">
-                        <label for="note-title" class="form-label">标题</label>
-                        <input type="text" id="note-title" class="form-input" placeholder="输入笔记标题">
-                    </div>
-                    <div class="form-group">
-                        <label for="note-content" class="form-label">内容</label>
-                        <textarea id="note-content" class="form-input" placeholder="输入笔记内容"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="note-tags" class="form-label">标签（用逗号分隔）</label>
-                        <input type="text" id="note-tags" class="form-input" placeholder="例如：学习, Python, 人工智能">
-                    </div>
-                </form>
+                <div class="form-group">
+                    <label class="form-label">标题</label>
+                    <input 
+                        type="text" 
+                        x-model="title"
+                        @keydown.enter.prevent="saveNote()"
+                        class="form-input" 
+                        placeholder="输入笔记标题..."
+                        x-ref="titleInput"
+                    >
+                </div>
+                <div class="form-group">
+                    <label class="form-label">内容</label>
+                    <textarea 
+                        x-model="content"
+                        class="form-input" 
+                        rows="10"
+                        placeholder="输入笔记内容（支持 Markdown）..."
+                        style="resize: vertical; min-height: 200px;"
+                    ></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">标签（用逗号分隔）</label>
+                    <input 
+                        type="text" 
+                        x-model="tagsInput"
+                        class="form-input" 
+                        placeholder="例如：学习, 笔记, 技术"
+                    >
+                </div>
+                <div class="form-group">
+                    <label class="form-label">保存目录</label>
+                    <select x-model="subdir" class="form-input">
+                        <option value="">根目录</option>
+                        <option value="Chat">Chat</option>
+                        <option value="学习笔记">学习笔记</option>
+                        <option value="技术文档">技术文档</option>
+                        <option value="随笔">随笔</option>
+                    </select>
+                </div>
             </div>
             <div class="settings-footer">
-                <button class="btn btn-secondary" id="cancel-note">取消</button>
-                <button class="btn btn-primary" id="save-note">保存</button>
+                <button 
+                    class="btn btn-secondary" 
+                    @click="close()"
+                    :disabled="saving"
+                >取消</button>
+                <button 
+                    class="btn btn-primary" 
+                    @click="saveNote()"
+                    :disabled="saving || !title.trim()"
+                >
+                    <span x-show="!saving">保存</span>
+                    <span x-show="saving">保存中...</span>
+                </button>
             </div>
         </div>
     </div>
 
+    <!-- 智能检索弹窗 - 使用 Alpine.js -->
+    <div 
+        x-data="ragSearch()" 
+        x-show="isOpen" 
+        @keydown.escape.window="close()"
+        @open-rag-search.window="open()"
+        class="notes-search-modal"
+        :class="{ 'active': isOpen }"
+        style="display: none;"
+        x-cloak
+    >
+        <div class="notes-search-content" @click.away="close()">
+            <div class="notes-search-header">
+                <h3 class="notes-search-title">智能检索</h3>
+                <button class="close-notes-search" @click="close()">&times;</button>
+            </div>
+            <div class="notes-search-body">
+                <div class="search-box">
+                    <input 
+                        type="text" 
+                        x-model="query"
+                        @keydown.enter="search()"
+                        placeholder="输入问题或关键词..."
+                        class="flex-1"
+                    >
+                    <button @click="search()" :disabled="loading">搜索</button>
+                </div>
+                
+                <!-- RAG 回答区域 -->
+                <div class="rag-answer-container" x-show="answer">
+                    <h4 class="text-sm font-semibold mb-md text-primary">AI 回答</h4>
+                    <div class="rag-answer bg-muted p-lg rounded-lg" x-html="safeHtml(answer)"></div>
+                </div>
+                
+                <!-- 引用区域 -->
+                <div class="rag-citations-container" x-show="citations.length > 0">
+                    <h4 class="text-sm font-semibold mb-md text-primary">引用来源</h4>
+                    <div class="flex flex-col gap-sm">
+                        <template x-for="(citation, idx) in citations" :key="idx">
+                            <div class="rag-citation-item bg-muted p-md rounded-lg">
+                                <div class="font-semibold text-primary mb-xs" x-text="`[${idx + 1}] ${citation.title || '无标题'}`"></div>
+                                <div class="text-sm text-secondary mb-xs" x-text="`${citation.rel_path || citation.file_path || '未知路径'} · 相似度: ${citation.score !== undefined ? citation.score.toFixed(4) : 'N/A'}`"></div>
+                                <div class="text-sm text-secondary" x-text="citation.snippet || ''"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <!-- 笔记卡片网格 -->
+                <div class="notes-search-results" x-show="results.length > 0">
+                    <template x-for="(note, idx) in results" :key="idx">
+                        <div 
+                            class="note-search-card"
+                            @click="close()"
+                        >
+                            <div class="note-search-card-header">
+                                <div class="note-search-card-title" x-text="note.title || '无标题'"></div>
+                                <span class="note-search-card-score" x-text="`相似度 ${note.score !== undefined ? note.score.toFixed(4) : (note.similarity ? note.similarity.toFixed(4) : 'N/A')}`"></span>
+                            </div>
+                            <div class="note-search-card-path" x-text="note.rel_path || note.file_path || '未知路径'"></div>
+                            <div class="note-search-card-body" x-text="(note.content || '').slice(0, 240)"></div>
+                            <div class="note-search-card-tags">
+                                <template x-for="tag in (Array.isArray(note.tags) && note.tags.length ? note.tags : ['无标签'])" :key="tag">
+                                    <span class="note-search-card-tag" x-text="tag"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- 加载状态 -->
+                <div x-show="loading" class="text-center py-xl">
+                    <div class="text-secondary">检索中...</div>
+                </div>
+                
+                <!-- 空状态 -->
+                <div x-show="!loading && !query && results.length === 0" class="text-center py-xl text-muted">
+                    请输入关键词搜索笔记
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        [x-cloak] { display: none !important; }
+        .rag-answer-container, .rag-citations-container {
+            margin-bottom: var(--spacing-lg);
+        }
+    </style>
+
     <script>
+        // Alpine.js 全局组件
+        function ragSearch() {
+            return {
+                isOpen: false,
+                query: '',
+                loading: false,
+                answer: '',
+                citations: [],
+                results: [],
+                
+                open() {
+                    this.isOpen = true;
+                    this.query = '';
+                    this.answer = '';
+                    this.citations = [];
+                    this.results = [];
+                    // 聚焦输入框
+                    this.$nextTick(() => {
+                        const input = this.$el.querySelector('input[type="text"]');
+                        if (input) input.focus();
+                    });
+                },
+                
+                close() {
+                    this.isOpen = false;
+                },
+                
+                safeHtml(text) {
+                    if (!text) return '';
+                    if (typeof DOMPurify !== 'undefined') {
+                        return DOMPurify.sanitize(text);
+                    }
+                    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                },
+                
+                async search() {
+                    const query = this.query.trim();
+                    if (!query) {
+                        this.answer = '';
+                        this.citations = [];
+                        this.results = [];
+                        return;
+                    }
+                    
+                    this.loading = true;
+                    this.answer = '';
+                    this.citations = [];
+                    this.results = [];
+                    
+                    try {
+                        const response = await fetch('/api/rag/query', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                question: query,
+                                top_k: 12
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            this.answer = result.answer || '';
+                            this.citations = result.citations || [];
+                            this.results = result.contexts || [];
+                        } else {
+                            const errText = await response.text();
+                            this.answer = `搜索失败：${errText}`;
+                            this.citations = [];
+                            this.results = [];
+                        }
+                    } catch (error) {
+                        this.answer = '搜索出错，请稍后重试';
+                        this.citations = [];
+                        this.results = [];
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            };
+        }
+
+        // 新建笔记弹窗组件
+        function newNoteModal() {
+            return {
+                isOpen: false,
+                title: '',
+                content: '',
+                tagsInput: '',
+                subdir: '',
+                saving: false,
+                
+                init() {
+                    // 监听全局事件
+                    window.addEventListener('open-new-note', () => {
+                        this.open();
+                    });
+                },
+                
+                open() {
+                    console.log('Opening new note modal');
+                    this.isOpen = true;
+                    this.title = '';
+                    this.content = '';
+                    this.tagsInput = '';
+                    this.subdir = '';
+                    this.saving = false;
+                    this.$nextTick(() => {
+                        if (this.$refs.titleInput) {
+                            this.$refs.titleInput.focus();
+                        }
+                    });
+                },
+                
+                close() {
+                    this.isOpen = false;
+                },
+                
+                async saveNote() {
+                    if (!this.title.trim()) {
+                        alert('请输入笔记标题');
+                        return;
+                    }
+                    
+                    this.saving = true;
+                    
+                    try {
+                        // 解析标签
+                        const tags = this.tagsInput
+                            .split(/[,，\s]+/)
+                            .map(t => t.trim())
+                            .filter(t => t.length > 0);
+                        
+                        const response = await fetch('/api/md/file', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                title: this.title.trim(),
+                                content: this.content.trim() || '# ' + this.title.trim() + '\n\n',
+                                tags: tags,
+                                subdir: this.subdir || undefined
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            alert(`笔记已创建：${result.path}`);
+                            this.close();
+                            
+                            // 刷新笔记列表
+                            if (typeof loadNotes === 'function') {
+                                loadNotes();
+                            }
+                            
+                            // 可选：跳转到新笔记
+                            if (result.path) {
+                                window.location.href = `notes_view.html?path=${encodeURIComponent(result.path)}`;
+                            }
+                        } else {
+                            const errorData = await response.json().catch(() => ({ error: '未知错误' }));
+                            alert(`创建失败：${errorData.error || '未知错误'}`);
+                        }
+                    } catch (error) {
+                        console.error('创建笔记失败:', error);
+                        alert('创建笔记时出错，请稍后重试');
+                    } finally {
+                        this.saving = false;
+                    }
+                }
+            };
+        }
+
+        // 笔记页面组件
+        function notesPage() {
+            return {
+                openNewNoteModal() {
+                    window.dispatchEvent(new CustomEvent('open-new-note'));
+                }
+            };
+        }
+        
         // API端点基础URL
         const API_BASE_URL = '/api';
+        const MD_LIST_API = '/api/md/files';
+        const MD_FILE_API = '/api/md/file';
         
         // DOM元素
         const notesContainer = document.getElementById('notes-container');
-        const newNoteBtn = document.getElementById('new-note-btn');
-        const createFirstNoteBtn = document.getElementById('create-first-note');
-        const noteModal = document.getElementById('note-modal');
         const viewNoteModal = document.getElementById('view-note-modal');
-        const closeModalBtn = document.getElementById('close-modal');
         const closeViewModalBtn = document.getElementById('close-view-modal');
         const closeViewNoteBtn = document.getElementById('close-view-note');
-        const deleteNoteBtn = document.getElementById('delete-note');
-        const editFromViewBtn = document.getElementById('edit-from-view');
-        const cancelNoteBtn = document.getElementById('cancel-note');
-        const saveNoteBtn = document.getElementById('save-note');
-        const noteForm = document.getElementById('note-form');
+        const copyMarkdownBtn = document.getElementById('copy-markdown-btn');
+        const toggleEditorBtn = document.getElementById('toggle-editor-btn');
         const searchInput = document.getElementById('search-notes');
         const menuBtn = document.getElementById('menu-btn');
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebar-overlay');
         const closeSidebarBtn = document.getElementById('close-sidebar');
-        const apiSettingsBtn = document.getElementById('api-settings-btn');
-        const settingsModal = document.getElementById('settings-modal');
-        const closeSettingsBtn = document.getElementById('close-settings');
-        const searchNotesBtn = document.getElementById('search-notes-btn');
-        const notesSearchModal = document.getElementById('notes-search-modal');
-        const closeNotesSearchBtn = document.getElementById('close-notes-search');
         
-        // 当前编辑的笔记ID
-        let currentNoteId = null;
+        let mdFiles = [];
         let currentViewNote = null;
+        let editorInstance = null;
         
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', function() {
             loadNotes();
-            
-            // 绑定事件
-            newNoteBtn.addEventListener('click', openNewNoteModal);
-            createFirstNoteBtn.addEventListener('click', openNewNoteModal);
-            closeModalBtn.addEventListener('click', closeNoteModal);
             closeViewModalBtn.addEventListener('click', closeViewNoteModal);
             closeViewNoteBtn.addEventListener('click', closeViewNoteModal);
-            // deleteNoteBtn.addEventListener('click', deleteNoteFromView);
-            // editFromViewBtn.addEventListener('click', editNoteFromView);
-            cancelNoteBtn.addEventListener('click', closeNoteModal);
-            saveNoteBtn.addEventListener('click', saveNote);
+            copyMarkdownBtn.addEventListener('click', copyMarkdown);
+            toggleEditorBtn.addEventListener('click', toggleEditor);
             searchInput.addEventListener('input', debounce(searchNotes, 300));
-            
-            // 侧边栏事件
             menuBtn.addEventListener('click', toggleSidebar);
             closeSidebarBtn.addEventListener('click', toggleSidebar);
             sidebarOverlay.addEventListener('click', toggleSidebar);
+            
+            // 点击背景关闭查看笔记模态框
+            viewNoteModal.addEventListener('click', function(e) {
+                if (e.target === viewNoteModal) {
+                    closeViewNoteModal();
+                }
+            });
+            
+            // ESC 键关闭查看笔记模态框
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && viewNoteModal.style.display !== 'none' && !viewNoteModal.classList.contains('active')) {
+                    closeViewNoteModal();
+                }
+            });
         });
         
         // 切换侧边栏
@@ -203,104 +527,77 @@
             settingsModal.classList.remove('active');
         }
         
-        // 打开笔记搜索弹窗
-        function openNotesSearchModal() {
-            notesSearchModal.classList.add('active');
-        }
-        
-        // 关闭笔记搜索弹窗
-        function closeNotesSearchModal() {
-            notesSearchModal.classList.remove('active');
-        }
-        
-        // 加载所有笔记
+        // 加载所有笔记（来自 Git 笔记目录）
         async function loadNotes() {
             try {
-                const response = await fetch(`${API_BASE_URL}/notes`);
+                const response = await fetch(MD_LIST_API);
                 if (response.ok) {
                     const data = await response.json();
-                    displayNotes(data.result);
+                    mdFiles = data.result || [];
+                    displayNotes(mdFiles);
                 } else {
-                    console.error('加载笔记失败:', response.status);
                     showError('加载笔记失败');
                 }
             } catch (error) {
-                console.error('加载笔记时出错:', error);
                 showError('加载笔记时出错');
             }
         }
         
-        // 显示笔记列表
+        // 显示笔记列表（使用前端过滤）
         function displayNotes(notes) {
             if (!notes || notes.length === 0) {
                 notesContainer.innerHTML = `
                     <div class="empty-state">
                         <p>暂无笔记</p>
-                        <button class="new-note-btn" id="create-first-note">创建第一篇笔记</button>
                     </div>
                 `;
-                document.getElementById('create-first-note').addEventListener('click', openNewNoteModal);
                 return;
             }
             
             notesContainer.innerHTML = '';
             notes.forEach(note => {
+                const normalizedTags = Array.isArray(note.tags)
+                    ? note.tags
+                    : (typeof note.tags === 'string'
+                        ? note.tags.split(/[,，\s]+/).filter(Boolean)
+                        : []);
                 const noteCard = document.createElement('div');
                 noteCard.className = 'note-card';
+                const tagsHtml = normalizedTags.map(tag => `<span class="tag">${tag}</span>`).join('');
                 noteCard.innerHTML = `
                     <h3 class="note-title">${note.title || '未命名笔记'}</h3>
-                    <div class="note-content">${note.content}</div>
-                    <div class="note-tags">
-                        ${(note.tags || []).map(tag => `<span class="tag">${tag}</span>`).join('')}
-                    </div>
+                    <div class="note-content">${note.path || ''}</div>
+                    <div class="note-tags">${tagsHtml}</div>
                     <div class="note-meta">
-                        <span>${formatDate(note.created_at)}</span>
-                        <span>${note.id}</span>
-                    </div>
-                    <div class="note-actions">
-                        <button class="btn btn-secondary btn-sm edit-note-btn" data-note-id="${note.id}">编辑</button>
-                        <button class="btn btn-danger btn-sm delete-note-btn" data-note-id="${note.id}">删除</button>
+                        <span>${note.status || ''}</span>
+                        <span>${note.path || ''}</span>
                     </div>
                 `;
                 
-                noteCard.addEventListener('click', (e) => {
-                    // 只有点击编辑按钮时才触发编辑功能
-                    if (!e.target.classList.contains('edit-note-btn')) {
-                        viewNote(note);
-                    }
-                });
-                
-                // 为编辑按钮添加事件监听器
-                noteCard.querySelector('.edit-note-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    openEditNoteModal(note);
-                });
-
-                // 为删除按钮添加事件监听器
-                noteCard.querySelector('.delete-note-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    deleteNote(note.id, note.title || '未命名笔记');
-                });
-                
+                noteCard.addEventListener('click', () => viewNoteByPath(note.path));
                 notesContainer.appendChild(noteCard);
             });
         }
         
         // 打开查看笔记模态框
-        function viewNote(note) {
-            currentViewNote = note;
-            document.getElementById('view-note-title').textContent = note.title || '未命名笔记';
-            document.getElementById('view-note-title-content').textContent = note.title || '未命名笔记';
-            document.getElementById('view-note-content').textContent = note.content;
-            document.getElementById('view-note-tags').innerHTML = (note.tags || []).map(tag => `<span class="tag">${tag}</span>`).join(' ');
-            document.getElementById('view-note-created').textContent = formatDate(note.created_at);
-            viewNoteModal.classList.add('active');
+        // 点击跳转到新的阅览页面
+        function viewNoteByPath(path) {
+            if (!path) return;
+            window.location.href = `/notes_view.html?path=${encodeURIComponent(path)}`;
         }
 
         // 关闭查看笔记模态框
         function closeViewNoteModal() {
+            viewNoteModal.style.display = 'none';
             viewNoteModal.classList.remove('active');
             currentViewNote = null;
+            const container = document.querySelector('#editor-container');
+            if (container) {
+                container.style.display = 'none';
+            }
+            if (editorInstance) {
+                editorInstance.setMarkdown('');
+            }
         }
 
         // 从查看模式切换到编辑模式
@@ -317,143 +614,20 @@
             }
         }
         
-        // 打开新建笔记模态框
-        function openNewNoteModal() {
-            currentNoteId = null;
-            document.getElementById('modal-title').textContent = '新建笔记';
-            noteForm.reset();
-            document.getElementById('note-id').value = '';
-            noteModal.classList.add('active');
-        }
-
-        // 打开编辑笔记模态框
-        function openEditNoteModal(note) {
-            currentNoteId = note.id;
-            document.getElementById('modal-title').textContent = '编辑笔记';
-            document.getElementById('note-id').value = note.id;
-            document.getElementById('note-title').value = note.title || '';
-            document.getElementById('note-content').value = note.content || '';
-            document.getElementById('note-tags').value = (note.tags || []).join(', ');
-            noteModal.classList.add('active');
-        }
-
-        // 关闭模态框
-        function closeNoteModal() {
-            noteModal.classList.remove('active');
-        }
-
-        // 删除笔记
-        async function deleteNote(noteId, noteTitle) {
-            if (!confirm(`确定要删除笔记"${noteTitle}"吗？此操作不可恢复。`)) {
-                return;
-            }
-
-            try {
-                const response = await fetch(`${API_BASE_URL}/note/${noteId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (response.ok) {
-                    loadNotes(); // 重新加载笔记列表
-                    closeViewNoteModal(); // 关闭查看模态框（如果打开的话）
-                    alert('笔记删除成功');
-                } else {
-                    const errorData = await response.json();
-                    console.error('删除笔记失败:', errorData);
-                    alert(`删除笔记失败: ${errorData.error}`);
-                }
-            } catch (error) {
-                console.error('删除笔记时出错:', error);
-                alert('删除笔记时出错');
-            }
-        }
-
-        // 保存笔记
-        async function saveNote() {
-            const title = document.getElementById('note-title').value.trim();
-            const content = document.getElementById('note-content').value.trim();
-            const tags = document.getElementById('note-tags').value
-                .split(',')
-                .map(tag => tag.trim())
-                .filter(tag => tag);
-            
-            if (!content) {
-                alert('请输入笔记内容');
-                return;
-            }
-            
-            const noteData = { content, tags };
-            if (title) {
-                noteData.title = title;
-            }
-            
-            try {
-                let response;
-                if (currentNoteId) {
-                    // 更新笔记
-                    response = await fetch(`${API_BASE_URL}/note/${currentNoteId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(noteData)
-                    });
-                } else {
-                    // 创建新笔记
-                    response = await fetch(`${API_BASE_URL}/note`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(noteData)
-                    });
-                }
-                
-                if (response.ok) {
-                    closeNoteModal();
-                    loadNotes(); // 重新加载笔记列表
-                } else {
-                    const errorData = await response.json();
-                    console.error('保存笔记失败:', errorData);
-                    alert(`保存笔记失败: ${errorData.error}`);
-                }
-            } catch (error) {
-                console.error('保存笔记时出错:', error);
-                alert('保存笔记时出错');
-            }
-        }
-        
-        // 搜索笔记
-        async function searchNotes() {
-            const query = searchInput.value.trim();
+        // 搜索笔记（前端过滤）
+        function searchNotes() {
+            const query = searchInput.value.trim().toLowerCase();
             if (!query) {
-                loadNotes();
+                displayNotes(mdFiles);
                 return;
             }
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/note/search`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ query })
-                });
-                
-                if (response.ok) {
-                    const results = await response.json();
-                    displayNotes(results);
-                } else {
-                    console.error('搜索笔记失败:', response.status);
-                    showError('搜索笔记失败');
-                }
-            } catch (error) {
-                console.error('搜索笔记时出错:', error);
-                showError('搜索笔记时出错');
-            }
+            const filtered = mdFiles.filter(n => {
+                const title = (n.title || '').toLowerCase();
+                const tags = (n.tags || []).join(',').toLowerCase();
+                const path = (n.path || '').toLowerCase();
+                return title.includes(query) || tags.includes(query) || path.includes(query);
+            });
+            displayNotes(filtered);
         }
         
         // 工具函数：格式化日期
@@ -498,19 +672,63 @@
         
         // 点击模态框外部关闭模态框
         window.onclick = function(event) {
-            if (event.target === noteModal) {
-                closeNoteModal();
-            }
-            if (event.target === settingsModal) {
-                closeSettingsModal();
-            }
-            if (event.target === notesSearchModal) {
-                closeNotesSearchModal();
-            }
             if (event.target === viewNoteModal) {
                 closeViewNoteModal();
             }
         };
+
+        function renderMarkdown(md) {
+            const html = DOMPurify.sanitize(marked.parse(md || ''), {USE_PROFILES: {html: true}});
+            const container = document.getElementById('view-note-content');
+            container.innerHTML = html;
+            hljs.highlightAll();
+        }
+
+        async function copyMarkdown() {
+            if (!currentViewNote || !currentViewNote.content) {
+                showError('暂无内容可复制');
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(currentViewNote.content);
+            } catch (e) {
+                showError('复制失败');
+            }
+        }
+
+        function ensureEditor() {
+            if (editorInstance) return;
+            const container = document.createElement('div');
+            container.id = 'editor-container';
+            container.style.height = '400px';
+            container.style.marginTop = '10px';
+            document.querySelector('#view-note-content').after(container);
+            editorInstance = new toastui.Editor({
+                el: container,
+                height: '400px',
+                initialEditType: 'wysiwyg',
+                previewStyle: 'vertical',
+                usageStatistics: false,
+                initialValue: ''
+            });
+        }
+
+        function toggleEditor() {
+            ensureEditor();
+            const container = document.querySelector('#editor-container');
+            if (!container) return;
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+            } else if (container.style.display === '') {
+                container.style.display = 'block';
+            } else {
+                container.style.display = 'none';
+            }
+            if (currentViewNote && currentViewNote.content) {
+                editorInstance.setMarkdown(currentViewNote.content || '');
+            }
+            toggleEditorBtn.textContent = container.style.display === 'none' ? '打开富文本编辑' : '隐藏富文本编辑';
+        }
     </script>
 
     <style>

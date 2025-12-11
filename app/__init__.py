@@ -9,6 +9,8 @@ from .api.routes.chat import chat_bp
 from .api.routes.search import search_bp
 from .api.routes.analyze import analyze_bp
 from .api.routes.markdown import markdown_bp
+from .api.routes.brainstorm import brainstorm_bp
+from .api.routes.prompt import prompt_bp
 from .api.routes.rag import rag_bp
 from flask_cors import CORS
 import os
@@ -38,6 +40,10 @@ def create_app() -> Flask:
     app.register_blueprint(search_bp)
     # 注册 RAG 检索问答
     app.register_blueprint(rag_bp)
+    # 注册灵感合成
+    app.register_blueprint(brainstorm_bp)
+    # 注册提示生成（维基采样 + LLM 提炼）
+    app.register_blueprint(prompt_bp)
     # 注册同步与分析
     app.register_blueprint(analyze_bp)
     # 注册 Markdown 浏览

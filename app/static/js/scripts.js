@@ -840,17 +840,31 @@ document.addEventListener('DOMContentLoaded', async function() {
                 updateCurrentConversation(aiResponse.response, 'bot');
             }
 
-            // 添加时间戳
+            // 添加时间戳（仅当消息还没有时间戳时）
             const now = new Date();
             const timeDiv = document.createElement('div');
             timeDiv.classList.add('message-time');
             timeDiv.textContent = formatTime(now);
 
-            // 为最后两条消息添加时间戳
+            // 为最后两条消息添加时间戳（检查是否已存在）
             const lastMessages = document.querySelectorAll('.message-container:not(.user)');
             if (lastMessages.length >= 2) {
-                lastMessages[lastMessages.length - 2].querySelector('.message').appendChild(timeDiv.cloneNode());
-                lastMessages[lastMessages.length - 1].querySelector('.message').appendChild(timeDiv.cloneNode());
+                const secondLastMessage = lastMessages[lastMessages.length - 2].querySelector('.message');
+                const lastMessage = lastMessages[lastMessages.length - 1].querySelector('.message');
+                
+                // 检查是否已有时间戳
+                if (secondLastMessage && !secondLastMessage.querySelector('.message-time')) {
+                    secondLastMessage.appendChild(timeDiv.cloneNode(true));
+                }
+                if (lastMessage && !lastMessage.querySelector('.message-time')) {
+                    lastMessage.appendChild(timeDiv.cloneNode(true));
+                }
+            } else if (lastMessages.length === 1) {
+                // 如果只有一条消息，也检查是否已有时间戳
+                const lastMessage = lastMessages[0].querySelector('.message');
+                if (lastMessage && !lastMessage.querySelector('.message-time')) {
+                    lastMessage.appendChild(timeDiv);
+                }
             }
 
         } catch (error) {
@@ -1541,6 +1555,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         // 如果 marked 库已加载，使用它来渲染
         if (typeof marked !== 'undefined') {
+            // 提前提取 $$...$$ 块（整行公式），避免 marked 将 \\ 转为 <br>
+            const mathBlocks = [];
+            const placeholder = (i) => `@@MATH_BLOCK_${i}@@`;
+            const protectedText = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, m) => {
+                mathBlocks.push(m);
+                return placeholder(mathBlocks.length - 1);
+            });
+            
             // 配置 marked
             marked.setOptions({
                 gfm: true,  // GitHub Flavored Markdown
@@ -1564,21 +1586,37 @@ document.addEventListener('DOMContentLoaded', async function() {
             });
             
             // 使用 DOMPurify 清理 HTML（如果可用）
-            let html = marked.parse(text);
+            let html = marked.parse(protectedText);
             if (typeof DOMPurify !== 'undefined') {
                 html = DOMPurify.sanitize(html, {
                     USE_PROFILES: { html: true },
-                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'del', 'ins'],
+                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'del', 'ins', 'span'],
                     ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'target', 'rel']
                 });
             }
             
-            // 延迟执行代码高亮（如果 highlight.js 已加载）
+            // 把占位符替换回原始 TeX 块，包裹 span 以便 MathJax 处理并居中显示
+            mathBlocks.forEach((tex, idx) => {
+                html = html.replace(
+                    placeholder(idx),
+                    `<span class="math-block">$$${tex}$$</span>`
+                );
+            });
+            
+            // 延迟执行代码高亮和 MathJax 渲染
             setTimeout(() => {
                 if (typeof hljs !== 'undefined') {
                     const containers = document.querySelectorAll('.message-content pre code');
                     containers.forEach(block => {
                         hljs.highlightElement(block);
+                    });
+                }
+                
+                // 触发 MathJax 渲染
+                if (window.MathJax && window.MathJax.typesetPromise) {
+                    const messageContents = document.querySelectorAll('.message-content');
+                    messageContents.forEach(el => {
+                        MathJax.typesetPromise([el]).catch(() => {});
                     });
                 }
             }, 0);

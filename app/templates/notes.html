@@ -32,6 +32,29 @@
         </div>
     </div>
 
+    <!-- 概念碰撞弹窗 -->
+    <div class="settings-modal" id="brainstorm-modal" style="display: none;">
+        <div class="settings-content" onclick="event.stopPropagation()">
+            <div class="settings-header">
+                <h2 class="settings-title">概念碰撞结果</h2>
+                <button class="close-settings" id="close-brainstorm">&times;</button>
+            </div>
+            <div class="settings-form">
+                <div class="form-group">
+                    <label class="form-label">来源笔记</label>
+                    <div id="brainstorm-sources" class="view-content"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">创意结果</label>
+                    <div id="brainstorm-body" class="view-content markdown-body"></div>
+                </div>
+            </div>
+            <div class="settings-footer">
+                <button class="btn btn-secondary" id="close-brainstorm-footer">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 侧边栏遮罩 -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
@@ -66,6 +89,13 @@
                         id="open-notes-search"
                         @click="$dispatch('open-rag-search')"
                     >智能检索</button>
+                </div>
+                <div class="flex gap-sm align-center brainstorm-actions">
+                    <select id="brainstorm-mode" class="form-input" style="min-width: 140px;">
+                        <option value="random">随机碰撞</option>
+                        <option value="mmr">差异最大 (MMR)</option>
+                    </select>
+                    <button class="btn btn-secondary" id="brainstorm-btn">概念碰撞</button>
                 </div>
             </div>
             
@@ -478,6 +508,13 @@
         const sidebar = document.getElementById('sidebar');
         const sidebarOverlay = document.getElementById('sidebar-overlay');
         const closeSidebarBtn = document.getElementById('close-sidebar');
+        const brainstormBtn = document.getElementById('brainstorm-btn');
+        const brainstormModeSelect = document.getElementById('brainstorm-mode');
+        const brainstormModal = document.getElementById('brainstorm-modal');
+        const brainstormBody = document.getElementById('brainstorm-body');
+        const brainstormSources = document.getElementById('brainstorm-sources');
+        const closeBrainstorm = document.getElementById('close-brainstorm');
+        const closeBrainstormFooter = document.getElementById('close-brainstorm-footer');
         
         let mdFiles = [];
         let currentViewNote = null;
@@ -508,6 +545,16 @@
                     closeViewNoteModal();
                 }
             });
+
+            if (brainstormBtn) {
+                brainstormBtn.addEventListener('click', runBrainstorm);
+            }
+            if (closeBrainstorm) {
+                closeBrainstorm.addEventListener('click', hideBrainstormModal);
+            }
+            if (closeBrainstormFooter) {
+                closeBrainstormFooter.addEventListener('click', hideBrainstormModal);
+            }
         });
         
         // 切换侧边栏
@@ -675,7 +722,90 @@
             if (event.target === viewNoteModal) {
                 closeViewNoteModal();
             }
+            if (event.target === brainstormModal) {
+                hideBrainstormModal();
+            }
         };
+
+        function hideBrainstormModal() {
+            if (brainstormModal) {
+                brainstormModal.style.display = 'none';
+            }
+        }
+
+        function showBrainstormModal() {
+            if (brainstormModal) {
+                brainstormModal.style.display = 'flex';
+            }
+        }
+
+        async function runBrainstorm() {
+            if (!brainstormBtn) return;
+            const mode = (brainstormModeSelect && brainstormModeSelect.value) || 'random';
+            brainstormBtn.disabled = true;
+            const originalText = brainstormBtn.textContent;
+            brainstormBtn.textContent = '生成中...';
+            try {
+                const resp = await fetch('/api/brainstorm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showError(data.error || '生成失败');
+                    return;
+                }
+                const idea = typeof data.idea === 'string' ? safeJsonParse(data.idea) : data.idea || {};
+                renderBrainstormResult({
+                    source_notes: data.source_notes || [],
+                    idea
+                });
+                showBrainstormModal();
+            } catch (e) {
+                showError('请求失败，请稍后重试');
+            } finally {
+                brainstormBtn.disabled = false;
+                brainstormBtn.textContent = originalText;
+            }
+        }
+
+        function safeJsonParse(text) {
+            try {
+                return JSON.parse(text);
+            } catch (_) {
+                return { raw: text };
+            }
+        }
+
+        function renderBrainstormResult(result) {
+            if (!result) return;
+            const sources = result.source_notes || [];
+            const idea = result.idea || {};
+            const conn = idea.connection || idea.raw || '（无连接点）';
+            const title = idea.title || '（无标题）';
+            const outline = Array.isArray(idea.outline) ? idea.outline : [];
+
+            if (brainstormSources) {
+                brainstormSources.innerHTML = sources.map((s, idx) => {
+                    const titleText = s.title || `笔记 ${idx + 1}`;
+                    const pathText = s.rel_path || '';
+                    return `<div class="brain-row"><strong>${idx + 1}.</strong> ${titleText}${pathText ? ' · ' + pathText : ''}</div>`;
+                }).join('') || '未提供笔记来源';
+            }
+
+            if (brainstormBody) {
+                const outlineHtml = outline.length
+                    ? `<ol class="brain-outline">${outline.map(item => `<li>${item}</li>`).join('')}</ol>`
+                    : '<div>暂无大纲</div>';
+                brainstormBody.innerHTML = `
+                    <p><strong>连接点：</strong>${conn}</p>
+                    <p><strong>标题：</strong>${title}</p>
+                    <div><strong>大纲：</strong></div>
+                    ${outlineHtml}
+                `;
+            }
+        }
 
         function renderMarkdown(md) {
             const html = DOMPurify.sanitize(marked.parse(md || ''), {USE_PROFILES: {html: true}});
@@ -884,6 +1014,19 @@
             color: #999;
             font-size: 1.1rem;
             margin-bottom: 20px;
+        }
+
+        .brain-outline {
+            margin: 0.5rem 0 0 1.2rem;
+            padding: 0;
+        }
+
+        .brain-outline li {
+            margin-bottom: 0.25rem;
+        }
+
+        .brain-row {
+            margin-bottom: 0.25rem;
         }
 
         .sidebar-nav {

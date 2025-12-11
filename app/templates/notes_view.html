@@ -61,39 +61,52 @@
             >取消</button>
         </div>
         
-        <div class="content-card bg-primary rounded-xl p-xl shadow-lg max-w-5xl mx-auto">
-            <h1 class="text-2xl font-bold text-primary mb-md" x-text="title || '请选择笔记'"></h1>
-            <div class="mb-md">
-                <template x-for="tag in tags" :key="tag">
-                    <span class="tag bg-primary-light text-primary px-md py-xs rounded-full text-xs mr-sm mb-xs inline-flex" x-text="tag"></span>
-                </template>
-            </div>
-            <div class="text-xs text-secondary mb-md" x-text="currentPath || ''"></div>
-            
-            <!-- 预览模式 -->
-            <div 
-                x-show="!isEditing"
-                id="note-body" 
-                class="markdown-body leading-relaxed text-primary"
-            ></div>
-            
-            <!-- 编辑模式 -->
+        <div class="content-wrapper">
+        <div class="content-card bg-primary rounded-xl p-xl shadow-lg">
+                <h1 class="text-2xl font-bold text-primary mb-md" x-text="title || '请选择笔记'"></h1>
+                <div class="mb-md">
+                    <template x-for="tag in tags" :key="tag">
+                        <span class="tag bg-primary-light text-primary px-md py-xs rounded-full text-xs mr-sm mb-xs inline-flex" x-text="tag"></span>
+                    </template>
+                </div>
+                <div class="text-xs text-secondary mb-md" x-text="currentPath || ''"></div>
+                
+                <!-- 预览模式 -->
+                <div 
+                    x-show="!isEditing"
+                    id="note-body" 
+                    class="markdown-body leading-relaxed text-primary"
+                ></div>
+                
+                <!-- 编辑模式 -->
             <div 
                 x-show="isEditing"
-                class="editor-wrapper mt-lg"
+                class="editor-wrapper mt-lg edit-split"
             >
-                <textarea 
-                    x-model="editorContent"
-                    class="editor-textarea w-full min-h-96 p-md text-sm leading-normal border rounded-lg"
-                    style="font-family: 'SFMono-Regular','Consolas','Liberation Mono',monospace;"
-                ></textarea>
+                <div class="editor-panel">
+                    <div class="panel-header">Markdown 编辑</div>
+                    <textarea 
+                        x-model="editorContent"
+                        @input="updatePreview()"
+                        class="editor-textarea w-full min-h-96 p-md text-sm leading-normal border rounded-lg"
+                        style="font-family: 'SFMono-Regular','Consolas','Liberation Mono',monospace;"
+                    ></textarea>
+                </div>
+                <div class="preview-panel">
+                    <div class="panel-header">实时预览</div>
+                    <div 
+                        id="note-preview" 
+                        class="markdown-body preview-body leading-relaxed text-primary"
+                    ></div>
+                </div>
+                </div>
+                
+                <!-- 空状态 -->
+                <div 
+                    x-show="!currentPath && !isEditing"
+                    class="empty text-center text-secondary py-4xl"
+                >请从笔记列表页点击进入</div>
             </div>
-            
-            <!-- 空状态 -->
-            <div 
-                x-show="!currentPath && !isEditing"
-                class="empty text-center text-secondary py-4xl"
-            >请从笔记列表页点击进入</div>
         </div>
     </div>
 
@@ -156,6 +169,7 @@
                 enterEditMode() {
                     if (!this.currentPath) return;
                     this.isEditing = true;
+                    this.$nextTick(() => this.updatePreview());
                 },
                 
                 exitEditMode() {
@@ -197,6 +211,12 @@
                     } catch (e) {
                         alert('复制失败');
                     }
+                },
+                
+                updatePreview() {
+                    if (typeof renderMarkdownWithMath === 'function') {
+                        renderMarkdownWithMath(this.editorContent || '', '#note-preview');
+                    }
                 }
             };
         }
@@ -205,6 +225,31 @@
     <style>
         .layout {
             min-height: 100vh;
+            box-sizing: border-box;
+        }
+        
+        .content-wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-xl);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        @media (max-width: 1200px) {
+            .content-wrapper {
+                padding: 0 var(--spacing-lg);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .content-wrapper {
+                padding: 0 var(--spacing-md);
+            }
+        }
+        
+        .content-card {
+            width: 100%;
             box-sizing: border-box;
         }
         
@@ -228,6 +273,36 @@
         .editor-textarea {
             box-sizing: border-box;
             resize: vertical;
+        }
+        
+        .edit-split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--spacing-xl);
+            align-items: start;
+        }
+        
+        .panel-header {
+            font-weight: var(--font-semibold);
+            margin-bottom: var(--spacing-sm);
+            color: var(--color-text-secondary);
+        }
+        
+        .preview-panel {
+            background: var(--color-bg-muted);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-md);
+            border: 1px solid var(--color-border);
+        }
+        
+        .preview-body {
+            min-height: 240px;
+        }
+        
+        @media (max-width: 960px) {
+            .edit-split {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </body>

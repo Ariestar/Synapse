@@ -255,3 +255,17 @@
     color: rgba(255, 255, 255, 0.9);
 }
 
+/* LaTeX 数学公式样式 */
+.markdown-body .math-block,
+.message-content .math-block {
+    display: block;
+    text-align: center;
+    margin: var(--spacing-md) 0;
+    overflow-x: auto;
+}
+
+.markdown-body .math-block .MathJax,
+.message-content .math-block .MathJax {
+    display: inline-block !important;
+}
+

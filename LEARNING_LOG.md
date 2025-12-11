@@ -152,3 +152,78 @@
 - **实现细节/语法**: 包含核心功能说明、技术栈介绍、快速开始指南、配置说明、项目结构、核心优势等章节。
 - **避坑/注意**: 文档需保持更新，与代码实现同步；环境变量配置需清晰说明默认值和必需项。
 
+## [2025-12-10] Chat 页面 LaTeX 整行公式居中
+- **核心概念**: 在聊天页面支持 LaTeX 渲染，整行公式（`$$...$$`）居中显示。
+- **实现细节/语法**: `aichat.html` 添加 MathJax 配置和脚本；`renderMarkdown()` 先提取 `$$...$$` 为占位符，marked 渲染后回填为 `<span class="math-block">$$...$$</span>`；CSS `.math-block` 设置 `display: block; text-align: center;` 实现居中。
+- **避坑/注意**: 需在 marked 处理前提取公式块，避免 `\\` 被转为 `<br>`；MathJax 渲染在 `setTimeout` 中异步触发，查找所有 `.message-content` 元素。
+
+## [2025-12-10] Notes 预览页面布局优化
+- **核心概念**: 美化 `notes_view.html` 页面，增加内容区域两侧留白，提升阅读体验。
+- **实现细节/语法**: 添加 `.content-wrapper` 包装器，设置 `max-width: 900px`、`padding: 0 var(--spacing-2xl)`，响应式适配：1200px 以下 `padding: 0 var(--spacing-xl)`，768px 以下 `padding: 0 var(--spacing-lg)`。
+- **避坑/注意**: 使用 `box-sizing: border-box` 确保 padding 不影响总宽度；内容卡片宽度设为 100% 以填充包装器。
+
+## [2025-12-11] 概念碰撞 Brainstorm API
+- **概念碰撞**: 随机/反相似抽样两条笔记交给 LLM 做“概念合成”输出创意。
+- **实现细节/语法**: `POST /api/brainstorm` -> `brainstorm_idea(mode, provider, model, base_url, api_key)`；随机使用 `random.sample`，MMR 通过最小余弦相似度 `_pick_least_similar`；LLM 调用 `client.chat.completions.create(..., response_format={"type": "json_object"})` 返回 JSON。
+- **避坑/注意**: 笔记不足抛 400；模型缺失抛显式错误；大规模索引建议缓存 id/控制文本长度（截断 1200 字符）。 
+
+## [2025-12-11] 前端概念碰撞接线
+- **核心概念**: notes 页面新增“概念碰撞”按钮，调用 `/api/brainstorm` 并弹窗展示来源笔记与生成的连接/标题/大纲。
+- **实现细节/语法**: `brainstorm-btn` + `brainstorm-mode` 触发 `runBrainstorm()`；fetch POST `{mode}`，解析 JSON（字符串返回时安全解析），填充 `brainstorm-body`/`brainstorm-sources`，遮罩点击关闭。
+- **避坑/注意**: 笔记不足或接口错误提示 `showError`；outline 为空兜底；新增 `brain-outline/brain-row` 样式防止排版挤压。
+
+## [2025-12-11] Wikipedia 随机提示生成（采样+提炼）
+- **核心概念**: Wikipedia 随机词条 + LLM 提炼为可迁移的“提示模板”，存本地 JSON。
+- **实现细节/语法**: `POST /api/prompts/generate` 调用 `generate_prompt_from_wiki(lang, provider, model, base_url, api_key)`；随机词条取 `https://{lang}.wikipedia.org/api/rest_v1/page/random/summary`，LLM `response_format={"type": "json_object"}`；结果持久化 `data/prompts.json`；`GET /api/prompts?limit&offset` 列表返回。
+- **避坑/注意**: 模型缺失抛 400；请求失败 500；可按需截断摘要防长文本；确保 `data/` 可写。
+- **命名调整**: 路由文件改为 `prompt.py`，服务文件 `prompt_engine.py`，路径去除比喻化命名。
+## [2025-12-10] Notes 编辑分栏与留白收紧
+- **核心概念**: 编辑模式左右分栏，左侧 Markdown 编辑，右侧实时预览，同时减少两侧留空。
+- **实现细节/语法**: `notes_view.html` 调整 `.content-wrapper` 为 `max-width: 1200px`、padding 依次为 xl/lg/md；编辑区域新增 `edit-split` 双栏布局，`panel-header` 标题 + `preview-panel` 预览容器，textarea `@input` 调用 `updatePreview()` 触发 `renderMarkdownWithMath` 渲染。
+- **避坑/注意**: 预览容器最小高度 240px；≤960px 自动切为单列；保持 `box-sizing: border-box` 避免 padding 影响宽度。
+
+## [2025-12-11] Wikipedia API UA/重定向
+- **核心概念**: Wikipedia REST 403/303 需自定义 User-Agent 并跟随重定向。
+- **实现细节/语法**: `httpx.Client(headers={"User-Agent": settings.WIKI_USER_AGENT, "Accept": "application/json"}, follow_redirects=True)` -> `_fetch_random_wiki` 可直接获取随机词条。
+- **避坑/注意**: UA 为空会被拒绝；若仍 4xx，检查网络或代理，必要时调整 `WIKI_USER_AGENT`。
+
+## [2025-12-11] Prompt 生成存储路径
+- **核心概念**: 生成的 prompt 本地持久化，便于复用/列表展示。
+- **实现细节/语法**: `generate_prompt_from_wiki` 将结果插入开头后写入 `data/prompts.json`，字段含 `id/source/prompt/created_at/provider/model`。
+- **避坑/注意**: 确保 `data/` 可写；批量生成会前插，注意文件大小与并发写入。
+
+## [2025-12-11] Brainstorm 注入 Prompt 扰动
+- **核心概念**: 概念碰撞前附加最近的 Wikipedia 提示模型，作为思维扰动。
+- **实现细节/语法**: `_build_prompt_hint` 读取 `data/prompts.json` 取最新 `model_name/core_principle/transfer_analogy/application_starters`，拼入用户提示；`_build_messages` 注入 `prompt_hint`。
+- **避坑/注意**: 无本地 prompt 时不注入；`data/` 不可写或 JSON 异常会静默回退。
+
+## [2025-12-11] Brainstorm 自动补充 Prompt 池
+- **核心概念**: 每次概念碰撞先生成一条新 prompt，维持池子上限 100。
+- **实现细节/语法**: `_refresh_prompt_pool(max_size=100)` -> 调用 `generate_prompt_from_wiki` 写入 `data/prompts.json`，若超出上限截断前 100 条；失败不阻塞 brainstorm。
+- **避坑/注意**: 依赖 LLM/Wiki 可用性，写入失败时仅跳过；大量并发可能存在覆盖，必要时加锁。
+
+## [2025-12-11] Brainstorm 即时拉取 Prompt 词（不落盘）
+- **核心概念**: 概念碰撞时直接从 Wikipedia+LLM 拉取一条 prompt 词作为扰动，默认中文，不写入 `prompts.json`，失败则回退本地缓存首条。
+- **实现细节/语法**: `_fetch_prompt_terms(lang="zh", provider/model/base_url/api_key)` 走 `_fetch_random_wiki` + `refine_topic`，`_build_prompt_hint` 优先用新词，缺失则 `_load_prompt_catalysts` 取本地第一条；`_build_messages` 将 hint 拼入用户提示。
+- **避坑/注意**: Wiki/LLM 不可用时仅提示缺失，不阻塞；若需指定语言可传 `prompt_lang`。
+
+## [2025-12-11] Brainstorm 选文重复与篇幅
+- **核心概念**: 概念碰撞从向量索引 `note_indexer.entries` 随机/最不相似抽样，两篇文本均截断到 `MAX_SNIPPET_LEN=1200`。
+- **实现细节/语法**: `pick_notes` 在条目少时 `random.sample` 容易重复同几篇；`_pick_least_similar` 仅在 embeddings 足够时生效。
+- **避坑/注意**: 若总文档少或未刷新索引，会频繁抽到相同长文；可缩短 `MAX_SNIPPET_LEN`、增加笔记数量或加入“近期已用”排除逻辑以提升多样性。
+
+## [2025-12-11] Brainstorm 短文优先随机
+- **核心概念**: 抽样时优先从较短文本池随机，减少长文占比并提升多样性。
+- **实现细节/语法**: 新增 `_pick_shorter_indices` 按文本长度中位数 *1.2 过滤候选，不足则取最短前 50；`pick_notes` 随机从候选取 2，仍不足则回退全量。`MAX_SNIPPET_LEN` 降至 800。
+- **避坑/注意**: 候选不足时会回退全量；若索引少仍可能重复，需补充笔记或重建索引。
+
+## [2025-12-11] Brainstorm 文件粒度抽样
+- **核心概念**: 随机抽样改为以文件为单位去重，避免同一长文多个分块被频繁命中。
+- **实现细节/语法**: `_pick_file_level_indices` 按 `rel_path/file_path/title` 聚合每个文件保留首个索引；`pick_notes` 先取文件去重池与短文池交集，再回退文件池/短文池/全量。
+- **避坑/注意**: 当索引极少时仍会回退全量；若需更强随机可补充笔记并重建索引。
+
+## [2025-12-11] 索引发布过滤默认关闭
+- **核心概念**: 默认不再仅索引 `status: publish` 的笔记，全部纳入向量索引。
+- **实现细节/语法**: `NOTE_ONLY_PUBLISHED` 默认从 `true` 调整为 `false`，仍可通过环境变量覆盖；`/api/sync` 将索引全部文件。
+- **避坑/注意**: 若需恢复发布过滤，设置 `NOTE_ONLY_PUBLISHED=true` 后重跑 `/api/sync` 重建索引。
+

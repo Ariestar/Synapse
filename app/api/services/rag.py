@@ -91,6 +91,22 @@ def run_rag_pipeline(
 
     provider_to_use = provider or settings.DEFAULT_PROVIDER
     model_to_use = model or settings.AI_PROVIDERS.get(provider_to_use, {}).get("model")
+    
+    # 验证模型是否可用
+    if not model_to_use:
+        available_models = settings.PROVIDER_MODELS.get(provider_to_use, [])
+        if available_models:
+            # 如果有可用模型列表，使用第一个作为默认值
+            model_to_use = available_models[0].get("id")
+            if not model_to_use:
+                raise ValueError(
+                    f"提供商 '{provider_to_use}' 的模型配置格式错误：缺少 'id' 字段。"
+                )
+        else:
+            raise ValueError(
+                f"未找到提供商 '{provider_to_use}' 的模型配置。"
+                f"请提供 model 参数或在配置中设置 {provider_to_use.upper()}_MODEL 环境变量。"
+            )
 
     messages = [
         {"role": "system", "content": system_prompt + ("\n\n" + context_prompt if context_prompt else "")},

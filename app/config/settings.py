@@ -79,11 +79,13 @@ class Settings:
         self.NOTE_LOCAL_PATH = os.getenv('NOTE_LOCAL_PATH', os.path.join(project_root, 'notes'))
         self.CHROMA_PERSIST_DIR = self._select_chroma_dir(project_root)
         self.NOTE_FILE_GLOB = os.getenv('NOTE_FILE_GLOB', '**/*.md')
-        # 仅索引 frontmatter 中 status: published 的笔记
-        self.NOTE_ONLY_PUBLISHED = os.getenv('NOTE_ONLY_PUBLISHED', 'true').lower() == 'true'
+        # 仅索引 frontmatter 中 status: published 的笔记（默认关闭以索引全部）
+        self.NOTE_ONLY_PUBLISHED = os.getenv('NOTE_ONLY_PUBLISHED', 'false').lower() == 'true'
 
         self.SERVER_PORT = int(os.getenv('SERVER_PORT', 8008))
         self.SERVER_HOST = os.getenv('SERVER_HOST', '0.0.0.0')
+        # Wikipedia 调用所需的 User-Agent，避免 403
+        self.WIKI_USER_AGENT = os.getenv('WIKI_USER_AGENT', 'flask-app-prompt/1.0 (contact: dev@example.com)')
 
     def _select_chroma_dir(self, project_root: str) -> str:
         """

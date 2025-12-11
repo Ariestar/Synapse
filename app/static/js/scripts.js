@@ -37,9 +37,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     const maxTokensInput = document.getElementById('max-tokens');
     const personaInput = document.getElementById('persona');
     const searchNotesCheckbox = document.getElementById('search-notes');
+    const assistantNameInput = document.getElementById('assistant-name');
+    const assistantPersonaInput = document.getElementById('assistant-persona');
+    const assistantSaveBtn = document.getElementById('assistant-save-btn');
+    const assistantReloadBtn = document.getElementById('assistant-reload-btn');
 
     // 在变量定义部分添加
     const clearHistoryBtn = document.getElementById('clear-history-btn');
+
+    // 助手配置
+    let assistantConfig = { name: 'AI', persona: '' };
 
     // 添加用于控制流式响应的变量
     let currentReader = null;
@@ -92,6 +99,37 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     // 加载保存的设置
+    async function fetchAssistantConfig() {
+        try {
+            const resp = await fetch(`/api/assistant`);
+            if (!resp.ok) return null;
+            const cfg = await resp.json();
+            assistantConfig = {
+                name: cfg.name || 'AI',
+                persona: cfg.persona || ''
+            };
+            return assistantConfig;
+        } catch (e) {
+            console.error('加载助手配置失败:', e);
+            return null;
+        }
+    }
+
+    async function updateAssistantConfig(name, persona) {
+        try {
+            const resp = await fetch(`/api/assistant`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, persona })
+            });
+            if (!resp.ok) throw new Error(await resp.text());
+            return await resp.json();
+        } catch (e) {
+            console.error('保存助手配置失败:', e);
+            throw e;
+        }
+    }
+
     function loadSettings() {
         const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
         apiUrlInput.value = settings.apiUrl || '';
@@ -101,6 +139,20 @@ document.addEventListener('DOMContentLoaded', async function() {
         // maxTokensInput.value = settings.maxTokens || 2048;
         personaInput.value = settings.persona || '';
         searchNotesCheckbox.checked = settings.searchNotes !== undefined ? settings.searchNotes : true;  // 默认开启
+
+        // 同步助手配置（后端持久化）
+        fetchAssistantConfig().then(cfg => {
+            if (cfg) {
+                if (assistantNameInput) assistantNameInput.value = cfg.name || '';
+                if (assistantPersonaInput) assistantPersonaInput.value = cfg.persona || '';
+                // 若本地未设 persona，则用助手 persona 覆盖
+                if (!settings.persona && cfg.persona) {
+                    settings.persona = cfg.persona;
+                    personaInput.value = cfg.persona;
+                    localStorage.setItem('llmSettings', JSON.stringify(settings));
+                }
+            }
+        });
 
         // 加载模型列表
         const provider = providerSelect.value || 'bigmodel';
@@ -123,6 +175,30 @@ document.addEventListener('DOMContentLoaded', async function() {
             searchNotes: searchNotesCheckbox.checked !== undefined ? searchNotesCheckbox.checked : true  // 默认开启
         };
         localStorage.setItem('llmSettings', JSON.stringify(settings));
+    }
+
+    async function saveAssistant() {
+        if (!assistantNameInput || !assistantPersonaInput) return;
+        try {
+            const cfg = await updateAssistantConfig(
+                assistantNameInput.value.trim(),
+                assistantPersonaInput.value.trim()
+            );
+            showNotification(`助手已保存：${cfg.name}`, 'success');
+        } catch (e) {
+            showNotification('保存助手失败，请稍后重试', 'error');
+        }
+    }
+
+    async function reloadAssistant() {
+        const cfg = await fetchAssistantConfig();
+        if (cfg) {
+            if (assistantNameInput) assistantNameInput.value = cfg.name || '';
+            if (assistantPersonaInput) assistantPersonaInput.value = cfg.persona || '';
+            showNotification('已加载助手配置', 'info');
+        } else {
+            showNotification('加载助手配置失败', 'error');
+        }
     }
 
     // 清除设置
@@ -299,6 +375,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     }
 
+    if (assistantSaveBtn) {
+        assistantSaveBtn.addEventListener('click', saveAssistant);
+    }
+    if (assistantReloadBtn) {
+        assistantReloadBtn.addEventListener('click', reloadAssistant);
+    }
+
     // 点击弹窗外部关闭
     if (settingsModal) {
         settingsModal.addEventListener('click', function(e) {
@@ -409,7 +492,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         const avatar = document.createElement('div');
         avatar.classList.add('avatar', `${sender}-avatar`);
-        avatar.textContent = sender === 'user' ? '你' : 'AI';
+        avatar.textContent = sender === 'user' ? '你' : (assistantConfig.name || 'AI');
         messageContainer.appendChild(avatar);
 
         const messageDiv = document.createElement('div');
@@ -598,12 +681,45 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 
+    function insertToolNotice(text) {
+        if (!text) return;
+        const notice = document.createElement('div');
+        notice.classList.add('message-container', 'system');
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', 'system-message');
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        messageContent.textContent = text;
+        messageDiv.appendChild(messageContent);
+        notice.appendChild(messageDiv);
+        chatMessages.appendChild(notice);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
     async function generateResponse(userMessage, relatedNotes = []) {
         const currentConversation = conversations.find(c => c.id === currentConversationId);
         if (!currentConversation) return "系统错误：找不到当前对话";
 
-        // 获取保存的设置
+        // 获取保存的设置 + 助手 persona/name
         const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
+        if (!settings.persona) {
+            if (assistantPersonaInput && assistantPersonaInput.value) {
+                settings.persona = assistantPersonaInput.value;
+            } else if (assistantConfig.persona) {
+                settings.persona = assistantConfig.persona;
+            }
+        }
+        const assistantName = assistantConfig.name || 'AI';
+
+        // 发送前提示可能触发的工具调用（RAG/概念碰撞）
+        const toolHints = [];
+        if (settings.searchNotes !== false) {
+            toolHints.push('笔记检索 (RAG)');
+        }
+        toolHints.push('概念碰撞');
+        if (toolHints.length > 0) {
+            insertToolNotice(`尝试使用：${toolHints.join(' / ')}，模型将自动决定是否调用。`);
+        }
 
         // 如果有检索到的笔记，先显示笔记卡片在 AI 消息中
         let botMessageContainer = null;
@@ -614,7 +730,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             const avatar = document.createElement('div');
             avatar.classList.add('avatar', 'bot-avatar');
-            avatar.textContent = 'AI';
+            avatar.textContent = assistantConfig.name || 'AI';
             botMessageContainer.appendChild(avatar);
 
             const messageDiv = document.createElement('div');
@@ -634,6 +750,10 @@ document.addEventListener('DOMContentLoaded', async function() {
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
+        const personaToSend = assistantName
+            ? [`你叫${assistantName}。`, settings.persona || assistantConfig.persona || ''].join('').trim()
+            : (settings.persona || assistantConfig.persona || undefined);
+
         try {
             const response = await fetch(`/stream_generate`, {
                 method: 'POST',
@@ -648,7 +768,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     provider: settings.provider || undefined,
                     temperature: settings.temperature,
                     max_tokens: settings.maxTokens,
-                    persona: settings.persona,
+                    persona: personaToSend,
                     search_notes: settings.searchNotes,
                     newMessage: userMessage,
                     related_notes: relatedNotes,  // 传递检索到的笔记

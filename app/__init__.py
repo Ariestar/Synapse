@@ -11,6 +11,7 @@ from .api.routes.analyze import analyze_bp
 from .api.routes.markdown import markdown_bp
 from .api.routes.brainstorm import brainstorm_bp
 from .api.routes.prompt import prompt_bp
+from .api.routes.assistant import assistant_bp
 from .api.routes.rag import rag_bp
 from flask_cors import CORS
 import os
@@ -48,6 +49,8 @@ def create_app() -> Flask:
     app.register_blueprint(analyze_bp)
     # 注册 Markdown 浏览
     app.register_blueprint(markdown_bp)
+    # 注册助手配置
+    app.register_blueprint(assistant_bp)
 
     # 添加全局错误处理器
     app.register_error_handler(500, lambda e: ({'error': str(e)}, 500))

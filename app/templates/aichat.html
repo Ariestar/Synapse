@@ -139,6 +139,41 @@
                         <span class="text-sm text-primary">启用笔记搜索功能</span>
                     </label>
                 </div>
+
+                <div class="form-group mb-lg">
+                    <label class="flex items-center gap-sm">
+                        <span class="text-sm text-primary">助手名称</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="assistant-name" 
+                        class="form-input w-full p-md border rounded-md" 
+                        placeholder="例如：小助手"
+                    >
+                </div>
+                <div class="form-group mb-lg">
+                    <label class="flex items-center gap-sm">
+                        <span class="text-sm text-primary">助手性格/提示词</span>
+                    </label>
+                    <textarea 
+                        id="assistant-persona" 
+                        class="form-input w-full p-md border rounded-md" 
+                        rows="3" 
+                        placeholder="例如：温柔简洁的产品运营伙伴"
+                    ></textarea>
+                    <div class="flex gap-sm mt-sm">
+                        <button 
+                            type="button"
+                            class="btn btn-primary px-md py-sm rounded-md"
+                            id="assistant-save-btn"
+                        >保存助手</button>
+                        <button 
+                            type="button"
+                            class="btn btn-secondary px-md py-sm rounded-md"
+                            id="assistant-reload-btn"
+                        >重新加载</button>
+                    </div>
+                </div>
             </form>
             <div class="settings-footer flex justify-end gap-md p-xl border-t">
                 <button 

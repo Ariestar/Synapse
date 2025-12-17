@@ -210,3 +210,6 @@ __marimo__/
 chroma_db/
 chroma_data/
 faiss_index/
+
+# Docs
+LEARNING_LOG.md

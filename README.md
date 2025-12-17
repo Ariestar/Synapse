@@ -156,7 +156,7 @@ curl -X POST http://localhost:5000/api/sync \
 | `EMBEDDING_API_KEY` | 嵌入模型 API Key | - |
 | `EMBEDDING_MODEL` | 嵌入模型名称 | `embedding-3-pro` |
 | `NOTE_LOCAL_PATH` | 笔记存储路径 | `./app/notes` |
-| `NOTE_ONLY_PUBLISHED` | 仅索引已发布笔记 | `False` |
+| `NOTE_ONLY_PUBLISHED` | 前端仅显示已发布笔记（列表过滤），索引包含全部笔记 | `False` |
 
 ## 📁 项目结构
 

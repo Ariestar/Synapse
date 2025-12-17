@@ -61,14 +61,6 @@ def get_file() -> ResponseReturnValue:
     if not data:
         return jsonify({"error": "文件不存在或路径非法"}), 404
 
-    # 如果需要发布过滤，且当前文件未发布则拒绝
-    if settings.NOTE_ONLY_PUBLISHED:
-        frontmatter = data.get("frontmatter") or {}
-        status = str(frontmatter.get("status", "")).lower()
-        if status != "publish":
-            current_app.logger.warning("md_get_file blocked by publish filter: path=%s status=%s", rel_path, status)
-            return jsonify({"error": "文件未发布"}), 403
-
     return jsonify(data), 200
 
 

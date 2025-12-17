@@ -79,7 +79,7 @@ class Settings:
         self.NOTE_LOCAL_PATH = os.getenv('NOTE_LOCAL_PATH', os.path.join(project_root, 'notes'))
         self.CHROMA_PERSIST_DIR = self._select_chroma_dir(project_root)
         self.NOTE_FILE_GLOB = os.getenv('NOTE_FILE_GLOB', '**/*.md')
-        # 仅索引 frontmatter 中 status: published 的笔记（默认关闭以索引全部）
+        # 控制前端列表是否只展示 frontmatter 中 status: publish 的笔记（默认展示全部，索引始终包含全部笔记）
         self.NOTE_ONLY_PUBLISHED = os.getenv('NOTE_ONLY_PUBLISHED', 'false').lower() == 'true'
 
         self.SERVER_PORT = int(os.getenv('SERVER_PORT', 8008))

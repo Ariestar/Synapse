@@ -227,3 +227,43 @@
 - **实现细节/语法**: `NOTE_ONLY_PUBLISHED` 默认从 `true` 调整为 `false`，仍可通过环境变量覆盖；`/api/sync` 将索引全部文件。
 - **避坑/注意**: 若需恢复发布过滤，设置 `NOTE_ONLY_PUBLISHED=true` 后重跑 `/api/sync` 重建索引。
 
+## [2025-12-11] Chat 前端 FC 提示恢复
+- **核心概念**: 聊天发送前再次提示可能触发的 Function Call（RAG/概念碰撞）。
+- **实现细节/语法**: `scripts.js` 新增 `insertToolNotice`，在 `generateResponse` 前展示“笔记检索(RAG)/概念碰撞，模型自动决定是否调用”。
+- **避坑/注意**: 仅提示，不强制调用；需与后端 tools 对齐。
+
+## [2025-12-11] 助手角色配置 API
+- **核心概念**: 提供助手名称/性格描述的查询与更新，并持久化到 `config.json`。
+- **实现细节/语法**: 新增 `assistant_config.py` 读写 `config.json`；路由 `/api/assistant` 支持 `GET` 获取、`PUT` 更新（支持部分字段），注册至应用。
+- **避坑/注意**: `name/persona` 至少一项；文件缺失自动写入默认值；仅做基础校验。
+
+## [2025-12-11] Chat 前端助手配置绑定
+- **核心概念**: 前端设置弹窗可编辑助手名称/性格并落盘，聊天头像和 persona 自动应用。
+- **实现细节/语法**: `assistantConfig` 全局存储；载入时拉取 `/api/assistant` 写入输入框并回填 persona；发送消息时若本地 persona 为空则使用助手 persona，并在系统提示中声明“你叫{assistantName}”；头像文字随助手名称变化。
+- **避坑/注意**: 若未保存助手，默认名称为 AI；修改后需点击“保存助手”，失败提示不影响聊天。
+## [2025-12-11] Chat 前端 FC 集成说明
+- **核心概念**: AI 聊天室调用后端 `/stream_generate`，由模型自动决定是否触发工具（RAG/概念碰撞），前端仅需发送消息，无需额外开关。
+- **实现细节/语法**: `scripts.js` 发送 `messages/newMessage/search_notes/provider/model/base_url/api_key/persona` 到后端；后端 tools 自动检索/碰撞并再流式补全，前端已有提示文案。
+- **避坑/注意**: 若想关闭检索，只需在 UI 关闭“笔记检索”开关；FC 提示仅提示可能调用，是否调用由模型决策。
+
+## [2025-12-11] 项目概览
+- **项目简介**: Flask 微服务整合 RAG 与 GitHub API，前端静态资源提供聊天与笔记体验。
+- **实现细节/语法**: `Flask` 路由 + `LangChain/ChromaDB` 检索生成；`GitPython/PyGithub` 拉取仓库；环境变量集中在 `settings.py` 管理。
+- **避坑/注意**: 请求/应用上下文需正确使用；嵌入/LLM 密钥缺失会导致索引与生成失败。
+
+## [2025-12-11] 项目创新细化
+- **概念碰撞 Brainstorm**: 笔记向量索引随机/反相似抽样，结合 Wikipedia prompt 扰动，`/api/brainstorm` 返回 JSON 结构含 sources/outline。
+- **Prompt 池自愈**: 调用 Wikipedia+LLM 动态生成 prompt 写入 `data/prompts.json`，超过 100 条截断，供后续 brainstorm 注入提示词。
+- **RAG 召回稳健性**: LangChain/ChromaDB 检索缺片段时回退关键词搜索；bigmodel/OpenAI 兼容 embeddings 可切换，嵌入批量分片防 400。
+- **前端智能提示**: 聊天前提示可能触发 RAG/概念碰撞工具，降低误用；MathJax+Markdown 渲染优化阅读体验。
+
+## [2025-12-11] 项目创新章节化
+- **章节1 概念碰撞 Brainstorm**: 以向量索引随机/反相似抽样笔记，叠加 Wikipedia prompt 扰动，接口 `/api/brainstorm` 以 JSON 提供 sources/连接/标题/大纲，强调可追溯性。
+- **章节2 Prompt 池自愈**: 每次脑暴可拉取 Wikipedia+LLM 生成新 prompt，写入 `data/prompts.json` 并维持 100 条上限，为后续创意提供扰动基底。
+- **章节3 RAG 召回稳健性**: LangChain/ChromaDB 检索缺片段时回退关键词搜索；嵌入层支持 bigmodel/OpenAI 兼容接口，批量分片与空文本过滤减低 400/None。
+- **章节4 前端智能提示与体验**: 聊天前提示可能触发 RAG/概念碰撞，避免误用；MathJax+Markdown 样式优化阅读与代码高亮，配合弹窗展示引用与大纲。
+
+## [2025-12-11] NOTE_ONLY_PUBLISHED 语义调整
+- **核心概念**: 环境变量仅控制前端列表是否过滤未发布笔记，向量索引始终包含全部笔记。
+- **实现细节/语法**: `/api/sync` 不再过滤 `status: publish`；Markdown 详情接口不再因未发布拒绝访问；README 更新变量说明。
+- **避坑/注意**: 若仅想在列表展示发布笔记，可设置 `NOTE_ONLY_PUBLISHED=true`，但索引与检索仍会覆盖所有文件。

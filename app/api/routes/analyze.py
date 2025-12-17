@@ -2,12 +2,15 @@
 同步、标签与关系建议接口
 """
 
+from typing import List, Optional
+
 from flask import Blueprint, request, jsonify
+from flask.typing import ResponseReturnValue
 from pathlib import Path
 
 from app.config.settings import settings
 from app.api.services.git_sync import git_sync
-from app.api.services.markdown_io import read_markdown_files, upsert_tags_to_frontmatter, filter_published_files
+from app.api.services.markdown_io import read_markdown_files, upsert_tags_to_frontmatter
 from app.api.services.indexer import note_indexer
 from app.api.services.ai_providers import get_chat_client
 
@@ -15,14 +18,13 @@ analyze_bp = Blueprint("analyze", __name__, url_prefix="/api")
 
 
 @analyze_bp.route("/sync", methods=["POST"])
-def sync_repo_and_index():
+def sync_repo_and_index() -> ResponseReturnValue:
     """
     触发 Git pull 并重建向量索引
     """
     pulled = git_sync.pull()
 
     files = read_markdown_files(settings.NOTE_LOCAL_PATH, settings.NOTE_FILE_GLOB)
-    files = filter_published_files(files, settings.NOTE_ONLY_PUBLISHED)
     indexed = note_indexer.rebuild_index(files)
     return jsonify(
         {
@@ -33,7 +35,13 @@ def sync_repo_and_index():
     ), 200
 
 
-def _generate_tags_via_llm(content: str, provider: str, model: str, base_url: str, api_key: str):
+def _generate_tags_via_llm(
+    content: str,
+    provider: str,
+    model: str,
+    base_url: Optional[str],
+    api_key: Optional[str],
+) -> List[str]:
     """调用 LLM 生成 tags"""
     client = get_chat_client(provider=provider, base_url=base_url, api_key=api_key)
     messages = [
@@ -52,7 +60,7 @@ def _generate_tags_via_llm(content: str, provider: str, model: str, base_url: st
 
 
 @analyze_bp.route("/analyze/tags", methods=["POST"])
-def auto_tags():
+def auto_tags() -> ResponseReturnValue:
     """
     自动打标签：POST /api/analyze/tags
     body: {"file_path": "...", "commit": true} 或 {"content": "..."}
@@ -98,7 +106,7 @@ def auto_tags():
 
 
 @analyze_bp.route("/analyze/relations", methods=["POST"])
-def suggest_relations():
+def suggest_relations() -> ResponseReturnValue:
     """
     双向链接建议
     body: {"file_path": "...", "top_k": 5} 或 {"content": "...", "query": "..."}

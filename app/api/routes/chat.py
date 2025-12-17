@@ -7,6 +7,7 @@ from app.config.settings import settings
 from app.api.services.notes import note
 from app.api.services.indexer import note_indexer
 from app.api.services.ai_providers import get_chat_client
+from app.api.services.tools import tool_registry
 import json
 import os
 
@@ -195,26 +196,9 @@ def rag_chat():
 @chat_bp.route('/stream_generate', methods=['POST'])
 def stream_generate():
     """
-    流式生成AI回复
+    流式生成AI回复 (支持 Function Calling)
     URL: /stream_generate
     方法: POST
-    请求体:
-        {
-            "messages": [...],
-            "base_url": "...",
-            "api_key": "...",
-            "model": "...",
-            "provider": "...",
-            "temperature": 0.7,
-            "max_tokens": 2048,
-            "persona": "...",
-            "search_notes": true,
-            "newMessage": "..."
-        }
-    返回: Server-Sent Events流
-        data: {"text": "...", "reason": null}
-        data: {"text": "...", "reason": true}
-        ...
     """
     try:
         data = request.get_json()
@@ -227,87 +211,136 @@ def stream_generate():
         model = data.get('model')
         provider = data.get('provider', settings.DEFAULT_PROVIDER)
         persona = data.get('persona')
-        search_notes_enabled = data.get('search_notes', False)
-        new_message = data.get('newMessage', '')
         
-        # 如果启用了笔记搜索，从笔记中检索相关信息
-        context_messages = messages.copy()
-        relevant_notes = []
-        
-        # 优先使用前端传递的笔记（如果已检索）
-        related_notes_from_frontend = data.get('related_notes', [])
-        if related_notes_from_frontend:
-            relevant_notes = related_notes_from_frontend
-        elif search_notes_enabled and new_message:
-            # 如果前端没有传递，后端自己检索
-            relevant_notes = get_relevant_notes(new_message, top_k=6)
-        
-        if relevant_notes:
-            # 构建更详细的笔记上下文
-            note_context = "\n\n以下是相关笔记内容，请基于这些信息回答用户问题，并在回答中适当引用：\n\n"
-            for idx, note_item in enumerate(relevant_notes, 1):
-                title = note_item.get('title', '无标题')
-                content = note_item.get('content', '')
-                file_path = note_item.get('file_path') or note_item.get('rel_path', '')
-                note_context += f"[{idx}] {title} ({file_path})\n{content}\n\n"
+        # 处理工具
+        enabled_tools = data.get('enabled_tools', [])
+        # 兼容旧版 search_notes 参数
+        if data.get('search_notes', False) and 'search_notes' not in enabled_tools:
+            enabled_tools.append('search_notes')
             
-            note_context += "请基于以上笔记内容回答用户问题，尽量使用笔记中的信息，并在回答末尾注明引用的笔记编号。"
-            
-            # 将笔记上下文添加到系统消息或persona
-            if persona:
-                persona += "\n\n" + note_context
-            else:
-                # 如果没有persona，创建一个系统消息
-                context_messages.insert(0, {
-                    "sender": "system",
-                    "text": "你是一个知识库助手，请基于提供的笔记内容回答问题。" + note_context
-                })
+        tools_schemas = tool_registry.get_schemas(enabled_tools)
         
-        # 获取模型名称，如果没有提供则使用默认值
+        # 获取模型名称
         if not model:
             model = settings.AI_PROVIDERS.get(provider, {}).get('model', 'glm-4-flash')
         
         # 格式化消息
-        formatted_messages = format_messages_for_openai(context_messages, persona)
+        formatted_messages = format_messages_for_openai(messages, persona)
         
         # 创建OpenAI客户端
         client = create_openai_client(provider, base_url, api_key)
         
-        # 生成流式响应
         def generate():
-            try:
-                stream = client.chat.completions.create(
-                    model=model,
-                    messages=formatted_messages,
-                    stream=True,
-                    temperature=data.get('temperature', 0.7),
-                    max_tokens=data.get('max_tokens', 2048)
-                )
+            current_messages = formatted_messages
+            
+            # 最大迭代次数，防止无限循环
+            max_iterations = 5
+            iteration = 0
+            
+            while iteration < max_iterations:
+                iteration += 1
                 
-                for chunk in stream:
-                    if chunk.choices:
-                        choice = chunk.choices[0]
-                        delta = choice.delta
-                        
-                        # 处理内容
-                        if delta.content:
-                            # 检查是否是reasoning字段（某些模型可能支持）
-                            is_reason = getattr(delta, 'reason', False) if hasattr(delta, 'reason') else False
+                try:
+                    stream = client.chat.completions.create(
+                        model=model,
+                        messages=current_messages,
+                        stream=True,
+                        temperature=data.get('temperature', 0.7),
+                        max_tokens=data.get('max_tokens', 2048),
+                        tools=tools_schemas if tools_schemas else None
+                    )
+                    
+                    tool_calls_buffer = []
+                    
+                    for chunk in stream:
+                        if not chunk.choices:
+                            continue
                             
+                        delta = chunk.choices[0].delta
+                        
+                        # 处理内容流式输出
+                        if delta.content:
                             response_data = {
                                 "text": delta.content,
-                                "reason": is_reason
+                                "reason": False
                             }
-                            
-                            # 以SSE格式发送数据
                             yield f"data: {json.dumps(response_data, ensure_ascii=False)}\n\n"
-            
-            except Exception as e:
-                error_data = {
-                    "text": f"错误: {str(e)}",
-                    "reason": False
-                }
-                yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                        
+                        # 处理工具调用流式数据
+                        if delta.tool_calls:
+                            for tc_chunk in delta.tool_calls:
+                                if len(tool_calls_buffer) <= tc_chunk.index:
+                                    tool_calls_buffer.append({
+                                        "id": "",
+                                        "function": {"name": "", "arguments": ""},
+                                        "type": "function"
+                                    })
+                                
+                                tc = tool_calls_buffer[tc_chunk.index]
+                                if tc_chunk.id:
+                                    tc["id"] += tc_chunk.id
+                                if tc_chunk.function.name:
+                                    tc["function"]["name"] += tc_chunk.function.name
+                                if tc_chunk.function.arguments:
+                                    tc["function"]["arguments"] += tc_chunk.function.arguments
+
+                    # 如果没有工具调用，说明对话结束
+                    if not tool_calls_buffer:
+                        break
+                        
+                    # 执行工具调用
+                    current_messages.append({
+                        "role": "assistant",
+                        "tool_calls": tool_calls_buffer
+                    })
+                    
+                    for tc in tool_calls_buffer:
+                        func_name = tc["function"]["name"]
+                        func_args_str = tc["function"]["arguments"]
+                        
+                        # 发送工具执行提示
+                        tool_tips = {
+                            "brainstorm": "\n\n*(正在进行概念碰撞，抽取笔记并生成创意中...)*\n\n",
+                            "search_notes": "\n\n*(正在检索本地笔记...)*\n\n",
+                            "search_internet": "\n\n*(正在联网搜索...)*\n\n"
+                        }
+                        if func_name in tool_tips:
+                            yield f"data: {json.dumps({'text': tool_tips[func_name], 'reason': False}, ensure_ascii=False)}\n\n"
+                        
+                        try:
+                            func_args = json.loads(func_args_str)
+                            
+                            # 注入上下文回调，用于 side-channel 数据传输
+                            artifacts = []
+                            def collect_artifact(a):
+                                artifacts.append(a)
+                                
+                            context = {'on_artifact': collect_artifact}
+                            result = tool_registry.execute(func_name, context=context, **func_args)
+                            
+                            # 发送收集到的 artifacts
+                            for art in artifacts:
+                                event = {
+                                    "text": "",
+                                    "reason": False,
+                                    "artifact": art
+                                }
+                                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                                
+                        except Exception as e:
+                            result = f"Error parsing arguments: {str(e)}"
+                            
+                        # 添加工具执行结果到上下文
+                        current_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": str(result)
+                        })
+                        
+                except Exception as e:
+                    error_data = {"text": f"Error: {str(e)}", "reason": False}
+                    yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+                    break
         
         return Response(
             stream_with_context(generate()),

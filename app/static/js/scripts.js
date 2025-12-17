@@ -138,7 +138,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         // temperatureInput.value = settings.temperature || 0.7;
         // maxTokensInput.value = settings.maxTokens || 2048;
         personaInput.value = settings.persona || '';
-        searchNotesCheckbox.checked = settings.searchNotes !== undefined ? settings.searchNotes : true;  // 默认开启
+        if (searchNotesCheckbox) {
+            searchNotesCheckbox.checked = settings.searchNotes !== undefined ? settings.searchNotes : true;  // 默认开启
+        }
 
         // 同步助手配置（后端持久化）
         fetchAssistantConfig().then(cfg => {
@@ -164,7 +166,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // 保存设置
     function saveSettingsToStorage() {
+        const currentSettings = JSON.parse(localStorage.getItem('llmSettings')) || {};
         const settings = {
+            ...currentSettings, // 保留现有配置（如 enabledTools）
             apiUrl: apiUrlInput.value.trim(),
             apiKey: apiKeyInput.value.trim(),
             modelName: apiModelInput.value, // 这里改为直接获取选择框的值
@@ -172,7 +176,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             // temperature: parseFloat(temperatureInput.value) || 0.7,
             // maxTokens: parseInt(maxTokensInput.value) || 2048,
             persona: personaInput.value.trim(),
-            searchNotes: searchNotesCheckbox.checked !== undefined ? searchNotesCheckbox.checked : true  // 默认开启
+            searchNotes: searchNotesCheckbox ? searchNotesCheckbox.checked : (currentSettings.searchNotes !== undefined ? currentSettings.searchNotes : true)
         };
         localStorage.setItem('llmSettings', JSON.stringify(settings));
     }
@@ -210,7 +214,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         temperatureInput.value = 0.7;
         maxTokensInput.value = 2048;
         personaInput.value = '';
-        searchNotesCheckbox.checked = true;  // 默认开启
+        if (searchNotesCheckbox) searchNotesCheckbox.checked = true;
 
         // 重新加载默认提供商的模型
         loadModels('bigmodel').then(() => {
@@ -710,46 +714,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         }
         const assistantName = assistantConfig.name || 'AI';
-
-        // 发送前提示可能触发的工具调用（RAG/概念碰撞）
-        const toolHints = [];
-        if (settings.searchNotes !== false) {
-            toolHints.push('笔记检索 (RAG)');
-        }
-        toolHints.push('概念碰撞');
-        if (toolHints.length > 0) {
-            insertToolNotice(`尝试使用：${toolHints.join(' / ')}，模型将自动决定是否调用。`);
-        }
-
-        // 如果有检索到的笔记，先显示笔记卡片在 AI 消息中
+        
+        // --- 核心变更：不再强制显示工具提示，而是依赖后端 FC 执行时的反馈 ---
+        
+        // 定义 botMessageContainer
         let botMessageContainer = null;
-        if (relatedNotes && relatedNotes.length > 0) {
-            // 创建 AI 消息容器（先显示笔记卡片）
-            botMessageContainer = document.createElement('div');
-            botMessageContainer.classList.add('message-container', 'bot');
-
-            const avatar = document.createElement('div');
-            avatar.classList.add('avatar', 'bot-avatar');
-            avatar.textContent = assistantConfig.name || 'AI';
-            botMessageContainer.appendChild(avatar);
-
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message', 'bot-message');
-
-            // 添加笔记卡片
-            const notesContainer = document.createElement('div');
-            notesContainer.className = 'chat-notes-container';
-            relatedNotes.forEach(note => {
-                const noteCard = createNoteCard(note);
-                notesContainer.appendChild(noteCard);
-            });
-            messageDiv.appendChild(notesContainer);
-
-            botMessageContainer.appendChild(messageDiv);
-            chatMessages.appendChild(botMessageContainer);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
+        
         const personaToSend = assistantName
             ? [`你叫${assistantName}。`, settings.persona || assistantConfig.persona || ''].join('').trim()
             : (settings.persona || assistantConfig.persona || undefined);
@@ -769,9 +739,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                     temperature: settings.temperature,
                     max_tokens: settings.maxTokens,
                     persona: personaToSend,
-                    search_notes: settings.searchNotes,
+                    search_notes: false, // 禁用后端旧的强制搜索
+                    enabled_tools: settings.enabledTools || [], // 传递启用的工具列表
                     newMessage: userMessage,
-                    related_notes: relatedNotes,  // 传递检索到的笔记
+                    related_notes: [], // 禁用前端传递旧的笔记
                 })
             });
 
@@ -784,6 +755,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             let solution = '';
             let responseText = '';
             let currentField = '';
+            let toolExecutionText = ''; // 专门记录工具执行状态
 
             while (true) {
                 // 检查是否需要停止生成
@@ -805,53 +777,62 @@ document.addEventListener('DOMContentLoaded', async function() {
                     if (line.startsWith('data:')) {
                         const data = JSON.parse(line.substring(5).trim());
 
-                        if (data.reason != null && data.reason) {
-                            solution += data.text;
-                            currentField = 'solution';
+                        if (data.artifact) {
+                            // 处理 Side-channel artifact (e.g. citations)
+                            if (data.artifact.type === 'citations' && Array.isArray(data.artifact.data)) {
+                                if (!botMessageContainer) {
+                                    // 确保有消息容器
+                                    botMessageContainer = document.createElement('div');
+                                    botMessageContainer.classList.add('message-container', 'bot');
+                                    const avatar = document.createElement('div');
+                                    avatar.classList.add('avatar', 'bot-avatar');
+                                    avatar.textContent = assistantConfig.name || 'AI';
+                                    botMessageContainer.appendChild(avatar);
+                                    
+                                    const messageDiv = document.createElement('div');
+                                    messageDiv.classList.add('message', 'bot-message');
+                                    botMessageContainer.appendChild(messageDiv);
+                                    chatMessages.appendChild(botMessageContainer);
+                                }
+                                
+                                const messageDiv = botMessageContainer.querySelector('.message');
+                                
+                                // 创建笔记容器 (如果不存在)
+                                let notesContainer = messageDiv.querySelector('.chat-notes-container');
+                                if (!notesContainer) {
+                                    notesContainer = document.createElement('div');
+                                    notesContainer.className = 'chat-notes-container';
+                                    // 插入到消息内容的上方
+                                    messageDiv.prepend(notesContainer);
+                                }
+                                
+                                // 渲染卡片
+                                data.artifact.data.forEach(note => {
+                                    const noteCard = createNoteCard(note);
+                                    notesContainer.appendChild(noteCard);
+                                });
+                                // 滚动到底部
+                                requestAnimationFrame(() => {
+                                    chatMessages.scrollTo({
+                                        top: chatMessages.scrollHeight,
+                                        behavior: 'smooth'
+                                    });
+                                });
+                            }
+                        } else if (data.reason != null && data.reason) {
+                            // 使用 reason 字段来传递工具执行状态
+                            toolExecutionText += data.text;
+                            updateStreamingMessage(toolExecutionText, 'reasoner');
                         } else {
                             responseText += data.text;
-                            currentField = 'response';
-                        }
-
-                        // 实时更新消息
-                        if (currentField === 'solution') {
-                            updateStreamingMessage(solution, 'reasoner');
-                        } else if (currentField === 'response') {
-                            // 如果已经有消息容器（包含笔记卡片），更新它；否则创建新的
-                            if (botMessageContainer) {
-                                const messageDiv = botMessageContainer.querySelector('.message');
-                                if (!messageDiv.querySelector('.message-content')) {
-                                    const messageContent = document.createElement('div');
-                                    messageContent.className = 'message-content';
-                                    messageDiv.appendChild(messageContent);
-                                }
-                                const messageContent = messageDiv.querySelector('.message-content');
-                                messageContent.innerHTML = renderMarkdown(responseText);
-                            } else {
-                                updateStreamingMessage(responseText, 'bot');
-                            }
+                            updateStreamingMessage(responseText, 'bot');
                         }
                     }
                 }
             }
 
-            // 确保消息容器有完整的内容和时间戳
-            if (botMessageContainer) {
-                const messageDiv = botMessageContainer.querySelector('.message');
-                if (!messageDiv.querySelector('.message-content')) {
-                    const messageContent = document.createElement('div');
-                    messageContent.className = 'message-content';
-                    messageContent.innerHTML = renderMarkdown(responseText);
-                    messageDiv.appendChild(messageContent);
-                }
-                const timeDiv = document.createElement('div');
-                timeDiv.classList.add('message-time');
-                timeDiv.textContent = formatTime(new Date());
-                messageDiv.appendChild(timeDiv);
-            }
-
             return {
-                solution: solution || "抱歉，我还没想好该怎么回答你的问题。",
+                solution: toolExecutionText,
                 response: responseText || "感谢你的分享，我理解你的感受。"
             };
 
@@ -900,8 +881,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
         messageContent.innerHTML = renderMarkdown(text);
 
-        // 自动滚动到底部
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        // 自动滚动到底部 (平滑滚动)
+        // 使用 requestAnimationFrame 确保在渲染后滚动
+        requestAnimationFrame(() => {
+            chatMessages.scrollTo({
+                top: chatMessages.scrollHeight,
+                behavior: 'smooth'
+            });
+        });
     }
 
     // 修改sendMessage函数
@@ -919,28 +906,29 @@ document.addEventListener('DOMContentLoaded', async function() {
         addMessage(messageText, 'user');
         messageInput.value = '';
         messageInput.style.height = 'auto';
+        
+        // 立即滚动到底部
+        requestAnimationFrame(() => {
+            chatMessages.scrollTo({
+                top: chatMessages.scrollHeight,
+                behavior: 'smooth'
+            });
+        });
 
         // 更新当前对话
         updateCurrentConversation(messageText, 'user');
 
-        // 获取设置，检查是否启用笔记搜索
-        const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
-        let relatedNotes = [];
-
-        // 如果启用了笔记搜索，先检索相关笔记
-        if (settings.searchNotes) {
-            typingIndicator.style.display = 'flex';
-            typingIndicator.innerHTML = '<div style="color: var(--color-text-secondary);">正在检索相关笔记...</div>';
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-            
-            relatedNotes = await searchNotesForChat(messageText);
-            typingIndicator.style.display = 'none';
-        }
-
         // 显示"正在输入"指示器
         typingIndicator.style.display = 'flex';
         typingIndicator.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // 使用 requestAnimationFrame 确保 UI 更新后滚动
+        requestAnimationFrame(() => {
+            chatMessages.scrollTo({
+                top: chatMessages.scrollHeight,
+                behavior: 'smooth'
+            });
+        });
 
         // 更改按钮为停止按钮
         isGenerating = true;
@@ -950,9 +938,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             </svg>
         `;
 
-        // 获取AI回复（传入检索到的笔记）
+        // 获取AI回复
         try {
-            const aiResponse = await generateResponse(messageText, relatedNotes);
+            const aiResponse = await generateResponse(messageText, []);
             typingIndicator.style.display = 'none';
 
             // 将AI回复添加到对话历史中

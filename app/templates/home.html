@@ -1,114 +1,54 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KingStudy - 学习助手</title>
-    <link rel="stylesheet" type="text/css" href="../static/css/styles.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-</head>
-<body x-data="{ navigateTo(url) { window.location.href = url; } }">
-    <div class="home-container">
-        <div class="container bg-primary rounded-2xl p-4xl shadow-xl">
-            <h1 class="text-3xl font-bold text-primary mb-xl">KingStudy 学习助手</h1>
-            <p class="text-lg text-secondary mb-4xl">一站式AI学习伴侣，助您高效学习与思考</p>
-            
-            <div class="flex justify-center gap-3xl flex-wrap mb-4xl">
-                <div 
-                    class="feature-card bg-primary rounded-xl p-3xl shadow-lg cursor-pointer transition-slow"
-                    @click="navigateTo('aichat.html')"
-                    @mouseenter="$el.style.transform = 'translateY(-10px)'"
-                    @mouseleave="$el.style.transform = 'translateY(0)'"
-                >
-                    <div class="text-5xl mb-xl text-primary">💬</div>
-                    <h2 class="text-2xl font-semibold text-primary mb-lg">ChatBox 聊天室</h2>
-                    <p class="text-base text-secondary leading-relaxed mb-xl" style="height: 80px;">
-                        与AI进行深度对话，解答疑问，激发灵感。支持多种AI模型，提供沉浸式聊天体验。
-                    </p>
-                    <button 
-                        class="btn-primary px-xl py-md rounded-full text-base font-medium transition-fast"
-                        @click.stop="navigateTo('aichat.html')"
-                    >
-                        进入聊天室
-                    </button>
-                </div>
-                
-                <div 
-                    class="feature-card bg-primary rounded-xl p-3xl shadow-lg cursor-pointer transition-slow"
-                    @click="navigateTo('notes.html')"
-                    @mouseenter="$el.style.transform = 'translateY(-10px)'"
-                    @mouseleave="$el.style.transform = 'translateY(0)'"
-                >
-                    <div class="text-5xl mb-xl text-secondary">📝</div>
-                    <h2 class="text-2xl font-semibold text-primary mb-lg">Notes 笔记本</h2>
-                    <p class="text-base text-secondary leading-relaxed mb-xl" style="height: 80px;">
-                        记录、管理和检索您的学习笔记。支持标签分类和智能搜索功能。
-                    </p>
-                    <button 
-                        class="btn-primary px-xl py-md rounded-full text-base font-medium transition-fast"
-                        @click.stop="navigateTo('notes.html')"
-                    >
-                        查看笔记
-                    </button>
-                </div>
+{% extends "base.html" %}
+
+{% block title %}KingStudy - Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto p-6 lg:p-12">
+    <div class="mb-12">
+        <h1 class="text-4xl font-bold tracking-tight text-black mb-4">欢迎回来, 探索者</h1>
+        <p class="text-lg text-gray-500">一站式 AI 学习伴侣，助您高效思考。</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Chat Card -->
+        <a href="aichat.html" class="group block p-8 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-black transition-all duration-200">
+            <div class="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center mb-6 group-hover:bg-black group-hover:text-white transition-colors">
+                <span class="text-2xl">💬</span>
             </div>
-            
-            <div class="footer text-sm text-muted mt-3xl">
-                <p>© 2025 KingStudy - 让学习更简单</p>
+            <h2 class="text-xl font-bold text-black mb-2">ChatBox 聊天室</h2>
+            <p class="text-gray-500 leading-relaxed">
+                与 AI 进行深度对话，解答疑问，激发灵感。支持多种模型切换与沉浸式体验。
+            </p>
+            <div class="mt-6 flex items-center text-sm font-medium text-gray-900 group-hover:text-blue-600">
+                进入聊天室 <span class="ml-2">→</span>
+            </div>
+        </a>
+
+        <!-- Notes Card -->
+        <a href="notes.html" class="group block p-8 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-black transition-all duration-200">
+            <div class="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center mb-6 group-hover:bg-black group-hover:text-white transition-colors">
+                <span class="text-2xl">📝</span>
+            </div>
+            <h2 class="text-xl font-bold text-black mb-2">Notes 笔记本</h2>
+            <p class="text-gray-500 leading-relaxed">
+                记录、管理和检索您的学习笔记。支持 Markdown 编辑与 RAG 智能检索。
+            </p>
+            <div class="mt-6 flex items-center text-sm font-medium text-gray-900 group-hover:text-blue-600">
+                查看笔记 <span class="ml-2">→</span>
+            </div>
+        </a>
+    </div>
+
+    <!-- Quick Actions / Stats -->
+    <div class="mt-12 pt-12 border-t border-gray-200">
+        <div class="flex flex-col md:flex-row justify-between items-center text-sm text-gray-500">
+            <p>© 2025 KingStudy</p>
+            <div class="flex gap-4 mt-4 md:mt-0">
+                <span class="hover:text-black cursor-pointer">关于我们</span>
+                <span class="hover:text-black cursor-pointer">隐私政策</span>
             </div>
         </div>
     </div>
-
-    <style>
-        .home-container {
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
-            padding: var(--spacing-xl);
-        }
-
-        .container {
-            max-width: 800px;
-            width: 100%;
-            backdrop-filter: blur(10px);
-        }
-
-        .feature-card {
-            width: 300px;
-            max-width: 100%;
-        }
-
-        .feature-card:hover {
-            box-shadow: var(--shadow-xl);
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
-            color: var(--color-text-inverse);
-            border: none;
-            cursor: pointer;
-        }
-
-        .btn-primary:hover {
-            transform: scale(1.05);
-            box-shadow: var(--shadow-lg);
-        }
-
-        @media (max-width: 768px) {
-            .home-container {
-                padding: var(--spacing-lg);
-            }
-            
-            .container {
-                padding: var(--spacing-xl) !important;
-            }
-            
-            .feature-card {
-                width: 100%;
-            }
-        }
-    </style>
-</body>
-</html>
+</div>
+{% endblock %}

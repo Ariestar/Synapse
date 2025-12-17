@@ -1,0 +1,119 @@
+<!-- RAG Search Modal -->
+<div 
+    x-data="ragSearch()" 
+    x-show="isOpen" 
+    @keydown.escape.window="close()"
+    @open-rag-search.window="open()"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    style="display: none;"
+    x-cloak
+>
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden border border-gray-100 flex flex-col max-h-[80vh]" @click.away="close()">
+        <div class="flex justify-between items-center p-4 border-b border-gray-100">
+            <h3 class="font-bold text-lg">搜索笔记</h3>
+            <button @click="close()" class="text-gray-400 hover:text-black">&times;</button>
+        </div>
+        <div class="p-4 flex-1 overflow-hidden flex flex-col">
+            <div class="flex gap-2 mb-4">
+                <input type="text" x-model="query" @keydown.enter="search()" placeholder="输入关键词..." class="flex-1 p-2 border border-gray-200 rounded-lg text-sm focus:border-black focus:ring-0">
+                <button @click="search()" :disabled="loading" class="px-4 py-2 bg-black text-white rounded-lg text-sm hover:opacity-80 disabled:opacity-50">搜索</button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto space-y-4 pr-2">
+                <div x-show="answer" class="bg-gray-50 p-4 rounded-lg text-sm">
+                    <div class="font-bold mb-1 text-xs text-gray-500 uppercase">AI 回答</div>
+                    <div x-html="safeHtml(answer)" class="prose prose-sm max-w-none"></div>
+                </div>
+                
+                <div x-show="results.length > 0" class="space-y-2">
+                    <div class="font-bold text-xs text-gray-500 uppercase">相关笔记</div>
+                    <template x-for="(note, idx) in results" :key="idx">
+                        <div class="border border-gray-200 rounded-lg p-3 hover:border-black transition-colors cursor-pointer" @click="close(); window.location.href = '/notes_view.html?path=' + encodeURIComponent(note.rel_path || note.file_path)">
+                            <div class="flex justify-between mb-1">
+                                <span class="font-medium text-sm" x-text="note.title || '无标题'"></span>
+                                <span class="text-xs bg-gray-100 px-1.5 rounded-full" x-text="(note.score || 0).toFixed(2)"></span>
+                            </div>
+                            <div class="text-xs text-gray-500 line-clamp-2" x-text="note.content"></div>
+                        </div>
+                    </template>
+                </div>
+                
+                <div x-show="loading" class="text-center py-8 text-gray-400 text-sm">搜索中...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function ragSearch() {
+        return {
+            isOpen: false,
+            query: '',
+            loading: false,
+            answer: '',
+            citations: [],
+            results: [],
+            
+            open() {
+                this.isOpen = true;
+                this.query = '';
+                this.answer = '';
+                this.citations = [];
+                this.results = [];
+                this.$nextTick(() => {
+                    const input = this.$el.querySelector('input[type="text"]');
+                    if (input) input.focus();
+                });
+            },
+            
+            close() {
+                this.isOpen = false;
+            },
+            
+            safeHtml(text) {
+                if (!text) return '';
+                if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(text);
+                return text;
+            },
+            
+            async search() {
+                if (!this.query.trim()) return;
+                this.loading = true;
+                this.answer = '';
+                this.results = [];
+                try {
+                    const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
+                    const response = await fetch('/api/rag/query', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            question: this.query,
+                            top_k: 12,
+                            provider: settings.provider || 'bigmodel',
+                            model: settings.modelName,
+                            base_url: settings.apiUrl,
+                            api_key: settings.apiKey,
+                            persona: settings.persona
+                        })
+                    });
+                    if (response.ok) {
+                        const res = await response.json();
+                        this.answer = res.answer;
+                        this.results = res.contexts;
+                    } else {
+                        const err = await response.text();
+                        this.answer = `搜索失败: ${err}`;
+                    }
+                } catch (e) {
+                    this.answer = `搜索出错: ${e.message}`;
+                } finally {
+                    this.loading = false;
+                }
+            }
+        };
+    }
+</script>
+
+
+
+

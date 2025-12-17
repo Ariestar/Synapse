@@ -1,309 +1,232 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notes 浏览</title>
-    <link rel="stylesheet" type="text/css" href="../static/css/styles.css">
-    <link rel="stylesheet" type="text/css" href="../static/css/markdown.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script>
-        window.MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true,
-                processEnvironments: true
-            },
-            options: {
-                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
-            }
-        };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="../static/js/mathjax_helper.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="mathjax-script" defer></script>
-</head>
-<body class="bg-secondary">
-    <div 
-        x-data="noteViewer()"
-        x-init="init()"
-        class="layout p-xl"
-    >
-        <div class="toolbar flex gap-md mb-md justify-end">
-            <button 
-                class="btn btn-primary px-md py-sm rounded-md"
-                @click="copyMarkdown()"
-                x-show="!isEditing"
-            >复制 Markdown</button>
-            <button 
-                class="btn btn-secondary px-md py-sm rounded-md"
-                @click="reloadCurrent()"
-                x-show="!isEditing"
-            >刷新当前</button>
-            <button 
-                class="btn btn-secondary px-md py-sm rounded-md"
-                @click="enterEditMode()"
-                x-show="!isEditing && currentPath"
-            >编辑笔记</button>
-            <button 
-                class="btn btn-primary px-md py-sm rounded-md"
-                @click="saveNote()"
-                x-show="isEditing"
-            >保存</button>
-            <button 
-                class="btn btn-secondary px-md py-sm rounded-md"
-                @click="exitEditMode()"
-                x-show="isEditing"
-            >取消</button>
-        </div>
+{% extends "base.html" %}
+
+{% block title %}View Note - KingStudy{% endblock %}
+{% block page_title %}Note{% endblock %}
+
+{% block content %}
+<div 
+    x-data="noteViewer()"
+    x-init="init()"
+    class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8"
+>
+    <!-- Toolbar -->
+    <div class="flex justify-between items-center mb-6">
+        <button onclick="history.back()" class="text-gray-500 hover:text-black flex items-center text-sm font-medium">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            返回
+        </button>
         
-        <div class="content-wrapper">
-        <div class="content-card bg-primary rounded-xl p-xl shadow-lg">
-                <h1 class="text-2xl font-bold text-primary mb-md" x-text="title || '请选择笔记'"></h1>
-                <div class="mb-md">
-                    <template x-for="tag in tags" :key="tag">
-                        <span class="tag bg-primary-light text-primary px-md py-xs rounded-full text-xs mr-sm mb-xs inline-flex" x-text="tag"></span>
-                    </template>
+        <div class="flex gap-2">
+            <template x-if="!isEditing">
+                <div class="flex gap-2">
+                    <button 
+                        @click="copyMarkdown()"
+                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+                    >
+                        复制 Markdown
+                    </button>
+                    <button 
+                        @click="enterEditMode()"
+                        class="inline-flex items-center px-3 py-1.5 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-black hover:bg-gray-800 focus:outline-none"
+                    >
+                        编辑
+                    </button>
                 </div>
-                <div class="text-xs text-secondary mb-md" x-text="currentPath || ''"></div>
-                
-                <!-- 预览模式 -->
-                <div 
-                    x-show="!isEditing"
-                    id="note-body" 
-                    class="markdown-body leading-relaxed text-primary"
-                ></div>
-                
-                <!-- 编辑模式 -->
-            <div 
-                x-show="isEditing"
-                class="editor-wrapper mt-lg edit-split"
-            >
-                <div class="editor-panel">
-                    <div class="panel-header">Markdown 编辑</div>
-                    <textarea 
-                        x-model="editorContent"
-                        @input="updatePreview()"
-                        class="editor-textarea w-full min-h-96 p-md text-sm leading-normal border rounded-lg"
-                        style="font-family: 'SFMono-Regular','Consolas','Liberation Mono',monospace;"
-                    ></textarea>
+            </template>
+            <template x-if="isEditing">
+                <div class="flex gap-2">
+                    <button 
+                        @click="exitEditMode()"
+                        class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+                    >
+                        取消
+                    </button>
+                    <button 
+                        @click="saveNote()"
+                        class="inline-flex items-center px-3 py-1.5 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-black hover:bg-gray-800 focus:outline-none"
+                    >
+                        保存
+                    </button>
                 </div>
-                <div class="preview-panel">
-                    <div class="panel-header">实时预览</div>
-                    <div 
-                        id="note-preview" 
-                        class="markdown-body preview-body leading-relaxed text-primary"
-                    ></div>
-                </div>
-                </div>
-                
-                <!-- 空状态 -->
-                <div 
-                    x-show="!currentPath && !isEditing"
-                    class="empty text-center text-secondary py-4xl"
-                >请从笔记列表页点击进入</div>
-            </div>
+            </template>
         </div>
     </div>
 
-    <script>
-        function noteViewer() {
-            return {
-                currentPath: null,
-                title: '',
-                tags: [],
-                editorContent: '',
-                isEditing: false,
-                originalContent: '',
-                
-                init() {
-                    const initPath = new URLSearchParams(location.search).get('path');
-                    if (initPath) {
-                        this.loadNote(initPath);
-                    }
-                },
-                
-                async loadNote(path) {
-                    if (!path) return;
-                    this.currentPath = path;
-                    try {
-                        const resp = await fetch(`/api/md/file?path=${encodeURIComponent(path)}`);
-                        if (!resp.ok) {
-                            alert('读取笔记失败');
-                            return;
-                        }
-                        const data = await resp.json();
-                        this.title = data.frontmatter?.title || path;
-                        this.tags = this.normalizeTags(data.frontmatter?.tags);
-                        this.originalContent = data.content || '';
-                        this.editorContent = this.originalContent;
-                        
-                        // 渲染 Markdown
-                        if (typeof renderMarkdownWithMath === 'function') {
-                            renderMarkdownWithMath(data.body || '', '#note-body');
-                        }
-                        
-                        this.exitEditMode();
-                    } catch (e) {
-                        alert('读取笔记时出错');
-                    }
-                },
-                
-                normalizeTags(tags) {
-                    if (!tags) return [];
-                    if (Array.isArray(tags)) return tags;
-                    if (typeof tags === 'string') return tags.split(/[,，\s]+/).filter(Boolean);
-                    return [];
-                },
-                
-                reloadCurrent() {
-                    if (this.currentPath) {
-                        this.loadNote(this.currentPath);
-                    }
-                },
-                
-                enterEditMode() {
-                    if (!this.currentPath) return;
-                    this.isEditing = true;
-                    this.$nextTick(() => this.updatePreview());
-                },
-                
-                exitEditMode() {
-                    this.isEditing = false;
-                    this.editorContent = this.originalContent;
-                },
-                
-                async saveNote() {
-                    if (!this.currentPath) return;
-                    try {
-                        const resp = await fetch('/api/md/file', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                                path: this.currentPath, 
-                                content: this.editorContent 
-                            })
-                        });
-                        if (!resp.ok) {
-                            const text = await resp.text();
-                            alert(`保存失败: ${text}`);
-                            return;
-                        }
-                        await this.loadNote(this.currentPath);
-                        alert('已保存');
-                    } catch (e) {
-                        alert('保存失败，请稍后重试');
-                    }
-                },
-                
-                async copyMarkdown() {
-                    if (!this.originalContent) {
-                        alert('暂无内容');
-                        return;
-                    }
-                    try {
-                        await navigator.clipboard.writeText(this.originalContent);
-                        alert('已复制到剪贴板');
-                    } catch (e) {
-                        alert('复制失败');
-                    }
-                },
-                
-                updatePreview() {
-                    if (typeof renderMarkdownWithMath === 'function') {
-                        renderMarkdownWithMath(this.editorContent || '', '#note-preview');
-                    }
+    <!-- Content Card -->
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden min-h-[500px]">
+        
+        <!-- Header -->
+        <div class="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2" x-text="title || '加载中...'"></h1>
+            <div class="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                <span x-text="currentPath || ''" class="font-mono text-xs"></span>
+                <template x-for="tag in tags" :key="tag">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800" x-text="tag"></span>
+                </template>
+            </div>
+        </div>
+
+        <!-- View Mode -->
+        <div 
+            x-show="!isEditing"
+            id="note-body" 
+            class="markdown-body p-8"
+        ></div>
+
+        <!-- Edit Mode -->
+        <div 
+            x-show="isEditing"
+            class="flex flex-col md:flex-row h-[calc(100vh-300px)] min-h-[500px]"
+            style="display: none;"
+        >
+            <!-- Editor -->
+            <div class="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-gray-200">
+                <div class="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider">Markdown 编辑</div>
+                <textarea 
+                    x-model="editorContent"
+                    @input="debounceUpdatePreview()"
+                    class="flex-1 w-full p-4 resize-none font-mono text-sm bg-gray-50 focus:outline-none focus:bg-white transition-colors"
+                    placeholder="# 输入 Markdown 内容..."
+                ></textarea>
+            </div>
+            
+            <!-- Preview -->
+            <div class="flex-1 flex flex-col bg-white">
+                <div class="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">实时预览</div>
+                <div 
+                    id="note-preview" 
+                    class="flex-1 p-4 overflow-y-auto markdown-body"
+                ></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="../static/js/mathjax_helper.js"></script>
+<script>
+    function noteViewer() {
+        return {
+            currentPath: null,
+            title: '',
+            tags: [],
+            editorContent: '',
+            isEditing: false,
+            originalContent: '',
+            
+            init() {
+                const params = new URLSearchParams(window.location.search);
+                const path = params.get('path');
+                if (path) {
+                    this.loadNote(path);
+                } else {
+                    this.title = '未指定笔记路径';
                 }
-            };
-        }
-    </script>
-    
-    <style>
-        .layout {
-            min-height: 100vh;
-            box-sizing: border-box;
-        }
-        
-        .content-wrapper {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 var(--spacing-xl);
-            width: 100%;
-            box-sizing: border-box;
-        }
-        
-        @media (max-width: 1200px) {
-            .content-wrapper {
-                padding: 0 var(--spacing-lg);
+            },
+            
+            async loadNote(path) {
+                this.currentPath = path;
+                try {
+                    const resp = await fetch(`/api/md/file?path=${encodeURIComponent(path)}`);
+                    if (!resp.ok) throw new Error('Note not found');
+                    const data = await resp.json();
+                    
+                    this.title = data.frontmatter?.title || path.split('/').pop();
+                    this.tags = this.normalizeTags(data.frontmatter?.tags);
+                    this.originalContent = data.content || '';
+                    this.editorContent = this.originalContent;
+                    
+                    // Render View
+                    this.render(this.originalContent, 'note-body');
+                } catch (e) {
+                    console.error(e);
+                    document.getElementById('note-body').innerHTML = '<div class="text-red-500">无法加载笔记内容</div>';
+                }
+            },
+            
+            normalizeTags(tags) {
+                if (!tags) return [];
+                if (Array.isArray(tags)) return tags;
+                if (typeof tags === 'string') return tags.split(/[,，\s]+/).filter(Boolean);
+                return [];
+            },
+            
+            enterEditMode() {
+                this.isEditing = true;
+                this.$nextTick(() => {
+                    this.render(this.editorContent, 'note-preview');
+                });
+            },
+            
+            exitEditMode() {
+                this.isEditing = false;
+                this.editorContent = this.originalContent;
+            },
+            
+            async saveNote() {
+                if (!this.currentPath) return;
+                try {
+                    const resp = await fetch('/api/md/file', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            path: this.currentPath, 
+                            content: this.editorContent 
+                        })
+                    });
+                    if (!resp.ok) throw new Error(await resp.text());
+                    
+                    this.originalContent = this.editorContent;
+                    this.isEditing = false;
+                    this.render(this.originalContent, 'note-body');
+                    alert('已保存');
+                } catch (e) {
+                    alert(`保存失败: ${e.message}`);
+                }
+            },
+            
+            async copyMarkdown() {
+                try {
+                    await navigator.clipboard.writeText(this.originalContent);
+                    alert('已复制');
+                } catch (e) {
+                    alert('复制失败');
+                }
+            },
+            
+            render(content, elementId) {
+                const el = document.getElementById(elementId);
+                if (!el) return;
+                
+                if (typeof marked !== 'undefined') {
+                    let html = marked.parse(content);
+                    if (typeof DOMPurify !== 'undefined') {
+                        html = DOMPurify.sanitize(html);
+                    }
+                    el.innerHTML = html;
+                    // Highlight
+                    el.querySelectorAll('pre code').forEach(block => {
+                        hljs.highlightElement(block);
+                    });
+                    // MathJax
+                    if (window.MathJax && window.MathJax.typesetPromise) {
+                        window.MathJax.typesetPromise([el]).catch(console.error);
+                    }
+                } else {
+                    el.innerText = content;
+                }
+            },
+            
+            debounceUpdatePreview: function() {
+                // Simple debounce implementation using Alpine's internal or manual
+                // Alpine x-model.debounce is easier but here we call render
+                if (this._debounceTimer) clearTimeout(this._debounceTimer);
+                this._debounceTimer = setTimeout(() => {
+                    this.render(this.editorContent, 'note-preview');
+                }, 300);
             }
-        }
-        
-        @media (max-width: 768px) {
-            .content-wrapper {
-                padding: 0 var(--spacing-md);
-            }
-        }
-        
-        .content-card {
-            width: 100%;
-            box-sizing: border-box;
-        }
-        
-        .content-card h1 {
-            margin-top: 0;
-        }
-        
-        .markdown-body {
-            line-height: 1.7;
-            color: var(--color-text-primary);
-        }
-        
-        pre code {
-            background: var(--color-bg-muted);
-            border-radius: var(--radius-md);
-            padding: var(--spacing-md);
-            display: block;
-            overflow-x: auto;
-        }
-        
-        .editor-textarea {
-            box-sizing: border-box;
-            resize: vertical;
-        }
-        
-        .edit-split {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: var(--spacing-xl);
-            align-items: start;
-        }
-        
-        .panel-header {
-            font-weight: var(--font-semibold);
-            margin-bottom: var(--spacing-sm);
-            color: var(--color-text-secondary);
-        }
-        
-        .preview-panel {
-            background: var(--color-bg-muted);
-            border-radius: var(--radius-lg);
-            padding: var(--spacing-md);
-            border: 1px solid var(--color-border);
-        }
-        
-        .preview-body {
-            min-height: 240px;
-        }
-        
-        @media (max-width: 960px) {
-            .edit-split {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
-</body>
-</html>
+        };
+    }
+</script>
+{% endblock %}

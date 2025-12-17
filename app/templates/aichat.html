@@ -1,588 +1,301 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatBox - AI聊天室</title>
-    <link rel="stylesheet" type="text/css" href="../static/css/styles.css">
-    <link rel="stylesheet" type="text/css" href="../static/css/markdown.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script>
-        window.MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true,
-                processEnvironments: true
-            },
-            options: {
-                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
-            }
-        };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="mathjax-script" defer></script>
-</head>
-<body 
-    x-data="chatApp()"
-    x-init="init()"
->
-    <!-- 侧边栏 -->
-    <div 
-        class="sidebar"
-        :class="{ 'active': sidebarOpen }"
-    >
-        <div class="sidebar-header">
-            <div class="sidebar-title">导航</div>
-            <button class="close-sidebar" @click="sidebarOpen = false">☰</button>
-        </div>
-        <div class="sidebar-nav">
-            <a href="home.html" class="nav-item">🏠 首页</a>
-            <a href="aichat.html" class="nav-item active">💬 ChatBox</a>
-            <a href="notes.html" class="nav-item">📝 笔记本</a>
-        </div>
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">API 设置</div>
-            <div class="sidebar-nav">
-                <button class="nav-item" @click="settingsOpen = true">⚙️ API配置</button>
+{% extends "base.html" %}
+
+{% block title %}ChatBox - KingStudy{% endblock %}
+{% block page_title %}ChatBox{% endblock %}
+
+{% block x_data %}chatApp(){% endblock %}
+
+{% block head %}
+<style type="text/tailwindcss">
+    @layer components {
+        .message-container {
+            @apply flex gap-4 mb-6 max-w-[95%] lg:max-w-[85%];
+        }
+        .message-container.user {
+            @apply ml-auto flex-row-reverse;
+        }
+        .message-container.bot {
+            @apply mr-auto;
+        }
+
+        .avatar {
+            @apply w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0;
+        }
+        .user-avatar {
+            @apply bg-black text-white;
+        }
+        .bot-avatar {
+            @apply bg-white border border-gray-200 text-black;
+        }
+        .reasoner-avatar {
+            @apply bg-gray-100 text-gray-600;
+        }
+
+        .message {
+            @apply px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm max-w-full overflow-hidden;
+        }
+        .user-message {
+            @apply bg-black text-white rounded-tr-sm;
+        }
+        .bot-message {
+            @apply bg-white border border-gray-200 text-gray-900 rounded-tl-sm;
+        }
+        .reasoner-message {
+            @apply bg-gray-50 border border-gray-100 text-gray-600 italic rounded-tl-sm;
+        }
+
+        .message-time {
+            @apply text-[10px] mt-1 opacity-50;
+        }
+        .user .message-time {
+            @apply text-right text-gray-400;
+        }
+        .bot .message-time {
+            @apply text-left text-gray-400;
+        }
+
+        /* Chat Notes Card */
+        .chat-note-card {
+            @apply bg-white border border-gray-200 rounded-lg p-3 mb-2 cursor-pointer hover:border-black transition-colors;
+        }
+        .chat-note-card-header {
+            @apply flex justify-between items-start gap-2 mb-1;
+        }
+        .chat-note-card-title {
+            @apply font-medium text-sm text-black line-clamp-1;
+        }
+        .chat-note-card-score {
+            @apply text-[10px] bg-gray-100 px-1.5 py-0.5 rounded-full text-gray-600;
+        }
+        .chat-note-card-path {
+            @apply text-[10px] text-gray-400 mb-2 truncate;
+        }
+        .chat-note-card-body {
+            @apply text-xs text-gray-600 line-clamp-2 mb-2;
+        }
+        .chat-note-card-tags {
+            @apply flex flex-wrap gap-1;
+        }
+        .chat-note-card-tag {
+            @apply text-[10px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-100;
+        }
+        
+        .typing-dot {
+            @apply w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.1s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.2s; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col h-full relative" x-init="init()">
+    <!-- Chat Area -->
+    <div class="flex-1 overflow-y-auto p-4 lg:p-8 pb-40 scrollbar-hide" id="chat-messages">
+        <!-- Messages injected by scripts.js -->
+        <div class="message-container bot">
+            <div class="avatar bot-avatar">AI</div>
+            <div class="message-content">
+                <div class="message bot-message">
+                    你好！我是你的 AI 助手。有什么我可以帮你的吗？
+                </div>
+                <div class="message-time">刚刚</div>
             </div>
-        </div>
-        <div class="sidebar-section">
-            <div class="sidebar-section-title">搜索笔记</div>
-            <div class="sidebar-nav">
-                <button class="nav-item" @click="$dispatch('open-rag-search')">🔍 搜索笔记</button>
-            </div>
-        </div>
-        <div class="sidebar-footer">
-            <button class="new-chat-btn" @click="createNewChat()">开始新对话</button>
         </div>
     </div>
+    
+    <!-- Typing Indicator -->
+    <div id="typing-indicator" class="hidden absolute bottom-28 left-8 bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm items-center gap-1 z-10">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+    </div>
 
-    <!-- 设置弹窗 -->
+    <!-- Input Area -->
+    <div class="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur border-t border-gray-200 p-4 lg:px-8 lg:py-6 z-20">
+        <div class="max-w-4xl mx-auto relative">
+             <!-- Toolbar -->
+             <div class="absolute -top-10 left-0 flex gap-2">
+                 <button 
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border shadow-sm"
+                    :class="settings.searchNotes ? 'bg-black text-white border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
+                    @click="toggleSearchNotes()"
+                 >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <span>笔记检索</span>
+                 </button>
+             </div>
+             
+             <!-- Input Box -->
+             <div class="relative flex items-end gap-2 bg-gray-50 border border-gray-200 rounded-2xl p-2 focus-within:ring-1 focus-within:ring-black focus-within:border-black transition-all shadow-sm hover:border-gray-300">
+                 <textarea 
+                    id="message-input" 
+                    placeholder="输入消息..." 
+                    rows="1"
+                    @keydown.enter.exact.prevent="sendMessage()"
+                    @input="autoResize($el)"
+                    class="w-full bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2.5 px-3 text-sm text-gray-900 placeholder-gray-400"
+                 ></textarea>
+                 
+                 <div class="flex gap-1 pb-1">
+                     <button 
+                        id="save-note-button" 
+                        title="保存为笔记"
+                        @click="saveConversationAsNote()"
+                        class="p-2 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl transition-colors"
+                     >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                     </button>
+                     <button 
+                        id="send-button" 
+                        title="发送"
+                        @click="sendMessage()"
+                        class="p-2 bg-black text-white rounded-xl hover:opacity-80 transition-opacity disabled:opacity-50 flex items-center justify-center w-9 h-9"
+                     >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"></path></svg>
+                     </button>
+                 </div>
+             </div>
+             <div class="text-center mt-2 text-[10px] text-gray-400">AI 可能会产生错误，请核对重要信息。</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+    <!-- Settings Modal -->
     <div 
-        class="settings-modal"
-        :class="{ 'active': settingsOpen }"
-        @click.self="settingsOpen = false"
-        @keydown.escape.window="settingsOpen = false"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
         x-show="settingsOpen"
         x-cloak
+        @click.self="settingsOpen = false"
     >
-        <div class="settings-content bg-primary rounded-xl shadow-xl">
-            <div class="settings-header flex justify-between items-center p-xl border-b">
-                <h3 class="settings-title text-xl font-semibold text-primary">API 设置</h3>
-                <button class="close-settings text-2xl text-muted" @click="settingsOpen = false">&times;</button>
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden border border-gray-100">
+            <div class="flex justify-between items-center p-4 border-b border-gray-100">
+                <h3 class="font-bold text-lg">API 设置</h3>
+                <button @click="settingsOpen = false" class="text-gray-400 hover:text-black">&times;</button>
             </div>
-            <form class="settings-form p-xl" @submit.prevent="saveSettings()">
-                <div class="form-group mb-lg">
-                    <label for="provider-select" class="form-label block mb-sm text-sm font-medium text-primary">AI 提供商</label>
-                    <select 
-                        id="provider-select" 
-                        class="form-input w-full p-md border rounded-md"
-                        x-model="settings.provider"
-                        @change="loadModels($event.target.value)"
-                    >
-                        <option value="bigmodel">智谱AI (默认)</option>
+            <form class="p-6 space-y-4 max-h-[70vh] overflow-y-auto" @submit.prevent="saveSettings()">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">提供商</label>
+                    <select id="provider-select" x-model="settings.provider" @change="loadModels($event.target.value)" class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-black focus:ring-0">
+                        <option value="bigmodel">智谱AI</option>
                         <option value="deepseek">DeepSeek</option>
                         <option value="openai">OpenAI</option>
                         <option value="qwen">通义千问</option>
                     </select>
                 </div>
-                <div class="form-group mb-lg">
-                    <label for="api-url" class="form-label block mb-sm text-sm font-medium text-primary">API 地址</label>
-                    <input 
-                        type="text" 
-                        id="api-url" 
-                        class="form-input w-full p-md border rounded-md"
-                        x-model="settings.apiUrl"
-                        placeholder="https://api.example.com/v1"
-                    >
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">API 地址</label>
+                    <input type="text" id="api-url" x-model="settings.apiUrl" placeholder="默认地址" class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-black focus:ring-0">
                 </div>
-                <div class="form-group mb-lg">
-                    <label for="api-key" class="form-label block mb-sm text-sm font-medium text-primary">API 密钥</label>
-                    <input 
-                        type="password" 
-                        id="api-key" 
-                        class="form-input w-full p-md border rounded-md"
-                        x-model="settings.apiKey"
-                        placeholder="输入您的API密钥"
-                    >
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                    <input type="password" id="api-key" x-model="settings.apiKey" class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-black focus:ring-0">
                 </div>
-                <div class="form-group mb-lg">
-                    <label for="model-name" class="form-label block mb-sm text-sm font-medium text-primary">模型名称</label>
-                    <select 
-                        id="model-name" 
-                        class="form-input w-full p-md border rounded-md"
-                        x-model="settings.modelName"
-                    >
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">模型</label>
+                    <select id="model-name" x-model="settings.modelName" class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-black focus:ring-0">
                         <option value="">请选择模型</option>
                         <template x-for="model in models" :key="model.id">
                             <option :value="model.id" x-text="model.name"></option>
                         </template>
                     </select>
                 </div>
-                <div class="form-group mb-lg">
-                    <label for="persona" class="form-label block mb-sm text-sm font-medium text-primary">AI 角色设定</label>
-                    <textarea 
-                        id="persona" 
-                        class="form-input w-full p-md border rounded-md"
-                        x-model="settings.persona"
-                        placeholder="例如：你是一个专业的心理咨询师..."
-                        rows="3"
-                    ></textarea>
-                </div>
-                <div class="form-group mb-lg">
-                    <label class="flex items-center gap-sm">
-                        <input type="checkbox" x-model="settings.searchNotes">
-                        <span class="text-sm text-primary">启用笔记搜索功能</span>
-                    </label>
-                </div>
-
-                <div class="form-group mb-lg">
-                    <label class="flex items-center gap-sm">
-                        <span class="text-sm text-primary">助手名称</span>
-                    </label>
-                    <input 
-                        type="text" 
-                        id="assistant-name" 
-                        class="form-input w-full p-md border rounded-md" 
-                        placeholder="例如：小助手"
-                    >
-                </div>
-                <div class="form-group mb-lg">
-                    <label class="flex items-center gap-sm">
-                        <span class="text-sm text-primary">助手性格/提示词</span>
-                    </label>
-                    <textarea 
-                        id="assistant-persona" 
-                        class="form-input w-full p-md border rounded-md" 
-                        rows="3" 
-                        placeholder="例如：温柔简洁的产品运营伙伴"
-                    ></textarea>
-                    <div class="flex gap-sm mt-sm">
-                        <button 
-                            type="button"
-                            class="btn btn-primary px-md py-sm rounded-md"
-                            id="assistant-save-btn"
-                        >保存助手</button>
-                        <button 
-                            type="button"
-                            class="btn btn-secondary px-md py-sm rounded-md"
-                            id="assistant-reload-btn"
-                        >重新加载</button>
-                    </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">角色设定</label>
+                    <textarea id="persona" x-model="settings.persona" rows="3" class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:border-black focus:ring-0"></textarea>
                 </div>
             </form>
-            <div class="settings-footer flex justify-end gap-md p-xl border-t">
-                <button 
-                    type="button" 
-                    class="btn btn-secondary px-lg py-md rounded-md"
-                    @click="clearSettings()"
-                >清除</button>
-                <button 
-                    type="button" 
-                    class="btn btn-primary px-lg py-md rounded-md"
-                    @click="saveSettings()"
-                >保存</button>
+            <div class="p-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
+                <button @click="clearSettings()" class="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg">清除</button>
+                <button @click="saveSettings()" class="px-4 py-2 text-sm text-white bg-black hover:opacity-80 rounded-lg shadow-sm">保存</button>
             </div>
         </div>
     </div>
+{% endblock %}
 
-    <!-- 笔记搜索弹窗 - 复用 notes.html 的组件 -->
-    <div 
-        x-data="ragSearch()" 
-        x-show="isOpen" 
-        @keydown.escape.window="close()"
-        @open-rag-search.window="open()"
-        class="notes-search-modal"
-        :class="{ 'active': isOpen }"
-        style="display: none;"
-        x-cloak
-    >
-        <div class="notes-search-content" @click.away="close()">
-            <div class="notes-search-header">
-                <h3 class="notes-search-title">搜索笔记</h3>
-                <button class="close-notes-search" @click="close()">&times;</button>
-            </div>
-            <div class="notes-search-body">
-                <div class="search-box">
-                    <input 
-                        type="text" 
-                        x-model="query"
-                        @keydown.enter="search()"
-                        placeholder="输入问题或关键词..."
-                        class="flex-1"
-                    >
-                    <button @click="search()" :disabled="loading">搜索</button>
-                </div>
-                
-                <div class="rag-answer-container" x-show="answer">
-                    <h4 class="text-sm font-semibold mb-md text-primary">AI 回答</h4>
-                    <div class="rag-answer bg-muted p-lg rounded-lg" x-html="safeHtml(answer)"></div>
-                </div>
-                
-                <div class="rag-citations-container" x-show="citations.length > 0">
-                    <h4 class="text-sm font-semibold mb-md text-primary">引用来源</h4>
-                    <div class="flex flex-col gap-sm">
-                        <template x-for="(citation, idx) in citations" :key="idx">
-                            <div class="rag-citation-item bg-muted p-md rounded-lg">
-                                <div class="font-semibold text-primary mb-xs" x-text="`[${idx + 1}] ${citation.title || '无标题'}`"></div>
-                                <div class="text-sm text-secondary mb-xs" x-text="`${citation.rel_path || citation.file_path || '未知路径'} · 相似度: ${citation.score !== undefined ? citation.score.toFixed(4) : 'N/A'}`"></div>
-                                <div class="text-sm text-secondary" x-text="citation.snippet || ''"></div>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-                
-                <div class="notes-search-results" x-show="results.length > 0">
-                    <template x-for="(note, idx) in results" :key="idx">
-                        <div class="note-search-card" @click="close()">
-                            <div class="note-search-card-header">
-                                <div class="note-search-card-title" x-text="note.title || '无标题'"></div>
-                                <span class="note-search-card-score" x-text="`相似度 ${note.score !== undefined ? note.score.toFixed(4) : (note.similarity ? note.similarity.toFixed(4) : 'N/A')}`"></span>
-                            </div>
-                            <div class="note-search-card-path" x-text="note.rel_path || note.file_path || '未知路径'"></div>
-                            <div class="note-search-card-body" x-text="(note.content || '').slice(0, 240)"></div>
-                            <div class="note-search-card-tags">
-                                <template x-for="tag in (Array.isArray(note.tags) && note.tags.length ? note.tags : ['无标签'])" :key="tag">
-                                    <span class="note-search-card-tag" x-text="tag"></span>
-                                </template>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                
-                <div x-show="loading" class="text-center py-xl text-secondary">检索中...</div>
-                <div x-show="!loading && !query && results.length === 0" class="text-center py-xl text-muted">请输入关键词搜索笔记</div>
-            </div>
-        </div>
-    </div>
-
-    <div 
-        class="sidebar-overlay"
-        :class="{ 'active': sidebarOpen }"
-        @click="sidebarOpen = false"
-    ></div>
-
-    <!-- 主内容区域 -->
-    <div 
-        class="main-content"
-        :class="{ 'sidebar-open': sidebarOpen }"
-    >
-        <header class="header-container">
-            <div class="top-navbar">
-                <div class="navbar-left flex items-center gap-md">
-                    <button class="menu-btn" @click="sidebarOpen = !sidebarOpen" title="菜单">
-                        <img src="../static/img/menu.svg" alt="菜单" width="24" height="24">
-                    </button>
-                    <div class="title">ChatBox - AI聊天室</div>
-                </div>
-            </div>
-        </header>
-
-        <main class="chat-main">
-            <div class="chat-container">
-                <div class="chat-messages-wrapper">
-                    <div class="chat-messages" id="chat-messages">
-                        <div class="message-container bot">
-                            <div class="avatar bot-avatar">AI</div>
-                            <div class="message-content">
-                                <div class="message bot-message">
-                                    你好！今天感觉如何呀？我永远是你忠实的倾听者。无论是想分享一缕阳光，还是倒一倒心里的雨，我都在这里。你的快乐、烦恼或任何小思绪，我都愿意安静地听你说。
-                                </div>
-                                <div class="message-time">刚刚</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="typing-indicator" id="typing-indicator">
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
-                    </div>
-                </div>
-
-                <div class="input-area-wrapper">
-                    <!-- 工具栏：检索开关 -->
-                    <div class="input-toolbar">
-                        <button 
-                            class="toolbar-btn"
-                            :class="{ 'active': settings.searchNotes }"
-                            @click="toggleSearchNotes()"
-                            title="笔记检索"
-                        >
-                            <svg class="toolbar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                            <span class="toolbar-text">笔记检索</span>
-                        </button>
-                    </div>
-                    
-                    <div class="input-area">
-                        <textarea 
-                            class="message-input" 
-                            id="message-input" 
-                            placeholder="向 AI 发送消息..." 
-                            rows="1"
-                            @keydown.enter.exact.prevent="sendMessage()"
-                            @input="autoResize($el)"
-                        ></textarea>
-                        <button 
-                            class="send-button" 
-                            id="send-button" 
-                            title="发送消息"
-                            @click="sendMessage()"
-                        >
-                            <svg class="send-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <button 
-                            class="save-note-button" 
-                            id="save-note-button" 
-                            title="保存最后问答为笔记 (Ctrl+S)"
-                            @click="saveConversationAsNote()"
-                        >
-                            <svg class="save-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <polyline points="17 21 17 13 7 13 7 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                <polyline points="7 3 7 8 15 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <script>
-        // Alpine.js 组件
-        function chatApp() {
-            return {
-                sidebarOpen: false,
-                settingsOpen: false,
-                settings: {
+{% block scripts %}
+<script>
+    function chatApp() {
+        return {
+            sidebarOpen: false,
+            settingsOpen: false,
+            settings: {
+                provider: 'bigmodel',
+                apiUrl: '',
+                apiKey: '',
+                modelName: '',
+                persona: '',
+                searchNotes: true
+            },
+            models: [],
+            
+            init() {
+                this.loadSettings();
+                this.loadModels(this.settings.provider);
+            },
+            
+            loadSettings() {
+                const saved = JSON.parse(localStorage.getItem('llmSettings')) || {};
+                if (saved.searchNotes === undefined) saved.searchNotes = true;
+                this.settings = { ...this.settings, ...saved };
+            },
+            
+            toggleSearchNotes() {
+                this.settings.searchNotes = !this.settings.searchNotes;
+                localStorage.setItem('llmSettings', JSON.stringify(this.settings));
+            },
+            
+            async loadModels(provider) {
+                if (!provider) provider = 'bigmodel';
+                try {
+                    const response = await fetch(`/list_models?provider=${provider}`);
+                    if (response.ok) {
+                        this.models = await response.json();
+                    }
+                } catch (error) {
+                    console.error('Failed to load models:', error);
+                    this.models = [];
+                }
+            },
+            
+            saveSettings() {
+                localStorage.setItem('llmSettings', JSON.stringify(this.settings));
+                this.settingsOpen = false;
+            },
+            
+            clearSettings() {
+                localStorage.removeItem('llmSettings');
+                this.settings = {
                     provider: 'bigmodel',
                     apiUrl: '',
                     apiKey: '',
                     modelName: '',
                     persona: '',
-                    searchNotes: true  // 默认开启检索功能
-                },
-                models: [],
-                
-                init() {
-                    this.loadSettings();
-                    this.loadModels(this.settings.provider);
-                },
-                
-                loadSettings() {
-                    const saved = JSON.parse(localStorage.getItem('llmSettings')) || {};
-                    // 如果之前没有保存过 searchNotes，默认开启
-                    if (saved.searchNotes === undefined) {
-                        saved.searchNotes = true;
-                    }
-                    this.settings = { ...this.settings, ...saved };
-                },
-                
-                toggleSearchNotes() {
-                    this.settings.searchNotes = !this.settings.searchNotes;
-                    localStorage.setItem('llmSettings', JSON.stringify(this.settings));
-                    this.showNotification(
-                        this.settings.searchNotes ? '笔记检索已开启' : '笔记检索已关闭',
-                        'info'
-                    );
-                },
-                
-                async loadModels(provider) {
-                    if (!provider) provider = 'bigmodel';
-                    try {
-                        const response = await fetch(`/list_models?provider=${provider}`);
-                        if (response.ok) {
-                            this.models = await response.json();
-                        }
-                    } catch (error) {
-                        console.error('加载模型列表失败:', error);
-                        this.models = [];
-                    }
-                },
-                
-                saveSettings() {
-                    localStorage.setItem('llmSettings', JSON.stringify(this.settings));
-                    this.settingsOpen = false;
-                    this.showNotification('设置已保存', 'success');
-                },
-                
-                clearSettings() {
-                    localStorage.removeItem('llmSettings');
-                    this.settings = {
-                        provider: 'bigmodel',
-                        apiUrl: '',
-                        apiKey: '',
-                        modelName: '',
-                        persona: '',
-                        searchNotes: true  // 默认开启检索功能
-                    };
-                    this.showNotification('设置已清除', 'info');
-                },
-                
-                createNewChat() {
-                    if (window.createNewConversation) {
-                        window.createNewConversation();
-                    }
-                    this.sidebarOpen = false;
-                },
-                
-                sendMessage() {
-                    if (window.sendMessage) {
-                        window.sendMessage();
-                    }
-                },
-                
-                saveConversationAsNote() {
-                    if (window.saveConversationAsNote) {
-                        window.saveConversationAsNote();
-                    }
-                },
-                
-                autoResize(textarea) {
-                    textarea.style.height = 'auto';
-                    textarea.style.height = textarea.scrollHeight + 'px';
-                },
-                
-                showNotification(message, type = 'info') {
-                    const notification = document.createElement('div');
-                    notification.className = `notification notification-${type}`;
-                    notification.textContent = message;
-                    notification.style.cssText = `
-                        position: fixed;
-                        top: 20px;
-                        right: 20px;
-                        padding: 15px 20px;
-                        border-radius: 5px;
-                        color: white;
-                        font-weight: bold;
-                        z-index: 10000;
-                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                        transform: translateX(100%);
-                        transition: transform 0.3s ease-in-out;
-                    `;
-                    
-                    const colors = {
-                        success: '#4CAF50',
-                        error: '#f44336',
-                        warning: '#ff9800',
-                        info: '#2196F3'
-                    };
-                    notification.style.backgroundColor = colors[type] || colors.info;
-                    
-                    document.body.appendChild(notification);
-                    setTimeout(() => notification.style.transform = 'translateX(0)', 10);
-                    setTimeout(() => {
-                        notification.style.transform = 'translateX(100%)';
-                        setTimeout(() => notification.remove(), 300);
-                    }, 3000);
-                }
-            };
-        }
-        
-        // RAG 搜索组件（复用 notes.html 的）
-        function ragSearch() {
-            return {
-                isOpen: false,
-                query: '',
-                loading: false,
-                answer: '',
-                citations: [],
-                results: [],
-                
-                open() {
-                    this.isOpen = true;
-                    this.query = '';
-                    this.answer = '';
-                    this.citations = [];
-                    this.results = [];
-                    this.$nextTick(() => {
-                        const input = this.$el.querySelector('input[type="text"]');
-                        if (input) input.focus();
-                    });
-                },
-                
-                close() {
-                    this.isOpen = false;
-                },
-                
-                safeHtml(text) {
-                    if (!text) return '';
-                    if (typeof DOMPurify !== 'undefined') {
-                        return DOMPurify.sanitize(text);
-                    }
-                    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                },
-                
-                async search() {
-                    const query = this.query.trim();
-                    if (!query) {
-                        this.answer = '';
-                        this.citations = [];
-                        this.results = [];
-                        return;
-                    }
-                    
-                    this.loading = true;
-                    this.answer = '';
-                    this.citations = [];
-                    this.results = [];
-                    
-                    try {
-                        const settings = JSON.parse(localStorage.getItem('llmSettings')) || {};
-                        const response = await fetch('/api/rag/query', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                question: query,
-                                top_k: 12,
-                                provider: settings.provider || 'bigmodel',
-                                model: settings.modelName || undefined,
-                                base_url: settings.apiUrl || undefined,
-                                api_key: settings.apiKey || undefined,
-                                persona: settings.persona || undefined,
-                            })
-                        });
-                        
-                        if (response.ok) {
-                            const result = await response.json();
-                            this.answer = result.answer || '';
-                            this.citations = result.citations || [];
-                            this.results = result.contexts || [];
-                        } else {
-                            const errText = await response.text();
-                            this.answer = `搜索失败：${errText}`;
-                            this.citations = [];
-                            this.results = [];
-                        }
-                    } catch (error) {
-                        this.answer = '搜索出错，请稍后重试';
-                        this.citations = [];
-                        this.results = [];
-                    } finally {
-                        this.loading = false;
-                    }
-                }
-            };
-        }
-    </script>
-    
-    <style>
-        [x-cloak] { display: none !important; }
-        .rag-answer-container, .rag-citations-container {
-            margin-bottom: var(--spacing-lg);
-        }
-    </style>
-    
-    <script src="../static/js/scripts.js"></script>
-</body>
-</html>
+                    searchNotes: true
+                };
+            },
+            
+            createNewChat() {
+                if (window.createNewConversation) window.createNewConversation();
+            },
+            
+            sendMessage() {
+                if (window.sendMessage) window.sendMessage();
+            },
+            
+            saveConversationAsNote() {
+                if (window.saveConversationAsNote) window.saveConversationAsNote();
+            },
+            
+            autoResize(textarea) {
+                textarea.style.height = 'auto';
+                textarea.style.height = textarea.scrollHeight + 'px';
+            }
+        };
+    }
+</script>
+<script src="../static/js/scripts.js"></script>
+{% endblock %}

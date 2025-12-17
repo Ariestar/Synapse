@@ -101,6 +101,7 @@ def list_markdown_metadata(
                 "title": title,
                 "status": status,
                 "tags": tags,
+                "content": f.get("content", ""),
             }
         )
     return meta_list

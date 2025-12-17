@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}KingStudy{% endblock %}</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        border: 'hsl(var(--border))',
+                        input: 'hsl(var(--input))',
+                        ring: 'hsl(var(--ring))',
+                        background: 'hsl(var(--background))',
+                        foreground: 'hsl(var(--foreground))',
+                        primary: {
+                            DEFAULT: '#0070f3', // Vercel Blue
+                            foreground: '#ffffff',
+                        },
+                        secondary: {
+                            DEFAULT: '#ffffff',
+                            foreground: '#000000',
+                        },
+                        destructive: {
+                            DEFAULT: '#ff0000',
+                            foreground: '#ffffff',
+                        },
+                        muted: {
+                            DEFAULT: '#fafafa',
+                            foreground: '#666666',
+                        },
+                        accent: {
+                            DEFAULT: '#000000',
+                            foreground: '#ffffff',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply bg-[#fafafa] text-[#111111] antialiased;
+            }
+            [x-cloak] { display: none !important; }
+        }
+        /* Custom Utilities */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .markdown-body {
+            @apply text-gray-800 leading-relaxed;
+        }
+        .markdown-body h1 { @apply text-2xl font-bold mt-6 mb-4; }
+        .markdown-body h2 { @apply text-xl font-bold mt-5 mb-3; }
+        .markdown-body h3 { @apply text-lg font-bold mt-4 mb-2; }
+        .markdown-body p { @apply mb-4; }
+        .markdown-body ul { @apply list-disc list-inside mb-4; }
+        .markdown-body ol { @apply list-decimal list-inside mb-4; }
+        .markdown-body blockquote { @apply border-l-4 border-gray-200 pl-4 text-gray-500 italic my-4; }
+        .markdown-body code { @apply bg-gray-100 rounded px-1 py-0.5 text-sm font-mono; }
+        .markdown-body pre { @apply bg-gray-100 rounded p-4 overflow-x-auto mb-4; }
+        .markdown-body pre code { @apply bg-transparent p-0; }
+        .markdown-body a { @apply text-primary hover:underline; }
+    </style>
+    
+    <!-- Scripts -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="mathjax-script" defer></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            },
+            options: {
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+            }
+        };
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body x-data="{% block x_data %}{ sidebarOpen: false, settingsOpen: false }{% endblock %}">
+    
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        {% block sidebar %}
+        {% include 'components/sidebar.html' %}
+        {% endblock %}
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col h-screen overflow-hidden relative">
+            <!-- Top Navbar (Mobile Only/Minimal) -->
+            <header class="h-16 flex items-center justify-between px-4 border-b border-gray-200 bg-white lg:hidden flex-shrink-0">
+                <button @click="sidebarOpen = true" class="text-gray-500">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+                <span class="font-bold text-lg">{% block page_title %}KingStudy{% endblock %}</span>
+                <div class="w-6"></div> <!-- Spacer -->
+            </header>
+
+            <!-- Page Content -->
+            <main class="flex-1 overflow-auto bg-[#fafafa] relative">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    {% block modals %}{% endblock %}
+    
+    {% include 'components/rag_modal.html' %}
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+

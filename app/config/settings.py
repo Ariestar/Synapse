@@ -95,13 +95,13 @@ class Settings:
         :param project_root: 项目根路径
         :return: 适用于当前平台的持久化目录
         """
-        default_dir = os.getenv('CHROMA_PERSIST_DIR', os.path.join(project_root, '..', 'chroma_db'))
+        default_dir = os.getenv('CHROMA_PERSIST_DIR', os.path.join(project_root, '..', 'faiss_index'))
         if os.name == 'nt':
             try:
                 default_dir.encode('ascii')
             except UnicodeEncodeError:
                 fallback_base = os.getenv('LOCALAPPDATA') or os.path.expanduser('~')
-                return os.path.join(fallback_base, 'flask_app_chroma_db')
+                return os.path.join(fallback_base, 'flask_app_faiss_index')
         return default_dir
 
 

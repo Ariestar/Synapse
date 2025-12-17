@@ -180,7 +180,7 @@ flask_app/
 │   │   ├── css/             # 样式文件
 │   │   └── js/              # JavaScript
 │   └── notes/               # 笔记存储
-├── chroma_db/               # 向量索引存储
+├── faiss_index/             # 向量索引存储 (Faiss)
 ├── main.py                  # 应用入口
 └── requirements.txt         # 依赖列表
 ```

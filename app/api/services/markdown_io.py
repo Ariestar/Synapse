@@ -145,3 +145,24 @@ def write_markdown_content(root_dir: str, rel_path: str, content: str) -> bool:
     return True
 
 
+def delete_markdown_file(root_dir: str, rel_path: str) -> bool:
+    """
+    删除指定的 Markdown 文件
+    """
+    base = Path(root_dir).resolve()
+    target = (base / rel_path).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError:
+        return False
+        
+    if not target.exists() or not target.is_file():
+        return False
+        
+    try:
+        target.unlink()
+        return True
+    except Exception:
+        return False
+
+

@@ -1666,11 +1666,26 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         // 如果 marked 库已加载，使用它来渲染
         if (typeof marked !== 'undefined') {
-            // 提前提取 $$...$$ 块（整行公式），避免 marked 将 \\ 转为 <br>
+            // 提前提取数学公式块，避免 marked 将 \\ 转为 <br>
             const mathBlocks = [];
             const placeholder = (i) => `@@MATH_BLOCK_${i}@@`;
-            const protectedText = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, m) => {
-                mathBlocks.push(m);
+            let protectedText = text;
+
+            // 1. Protect $$...$$
+            protectedText = protectedText.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+                mathBlocks.push(match);
+                return placeholder(mathBlocks.length - 1);
+            });
+
+            // 2. Protect \[...\]
+            protectedText = protectedText.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+                mathBlocks.push(match);
+                return placeholder(mathBlocks.length - 1);
+            });
+
+            // 3. Protect \begin{env}...\end{env}
+            protectedText = protectedText.replace(/\\begin\{([a-z\*]+)\}[\s\S]*?\\end\{\1\}/g, (match) => {
+                mathBlocks.push(match);
                 return placeholder(mathBlocks.length - 1);
             });
             
@@ -1706,11 +1721,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                 });
             }
             
-            // 把占位符替换回原始 TeX 块，包裹 span 以便 MathJax 处理并居中显示
+            // 把占位符替换回原始 TeX 块，使用 div 确保块级显示和居中
             mathBlocks.forEach((tex, idx) => {
                 html = html.replace(
                     placeholder(idx),
-                    `<span class="math-block">$$${tex}$$</span>`
+                    `<div class="math-block">${tex}</div>`
                 );
             });
             

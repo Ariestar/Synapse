@@ -17,6 +17,7 @@ from app.api.services.markdown_io import (
     list_markdown_metadata,
     read_markdown_content,
     write_markdown_content,
+    delete_markdown_file,
     parse_frontmatter,
 )
 
@@ -87,6 +88,25 @@ def update_file() -> ResponseReturnValue:
         return jsonify({"error": "路径非法或写入失败"}), 400
 
     return jsonify({"message": "更新成功"}), 200
+
+
+@markdown_bp.route("/file", methods=["DELETE"])
+def delete_file() -> ResponseReturnValue:
+    """
+    删除指定 Markdown 文件
+    DELETE /api/md/file?path=relative/path.md
+    """
+    rel_path = request.args.get("path")
+    if not rel_path:
+        return jsonify({"error": "path 参数必填"}), 400
+
+    current_app.logger.info("md_delete_file: path=%s root=%s", rel_path, settings.NOTE_LOCAL_PATH)
+    success = delete_markdown_file(settings.NOTE_LOCAL_PATH, rel_path)
+    
+    if not success:
+        return jsonify({"error": "文件不存在或删除失败"}), 404
+
+    return jsonify({"message": "删除成功"}), 200
 
 
 @markdown_bp.route("/file", methods=["POST"])

@@ -22,7 +22,13 @@ def sync_repo_and_index() -> ResponseReturnValue:
     """
     触发 Git pull 并重建向量索引
     """
+    if not settings.NOTE_REPO_URL:
+        return jsonify({"error": "未配置 NOTE_REPO_URL，请在 .env 文件中设置笔记仓库地址。"}), 400
+
     pulled = git_sync.pull()
+    
+    if not pulled:
+        return jsonify({"error": "Git pull 执行失败，请检查服务端日志以获取详情（如网络问题、权限错误或冲突）。"}), 500
 
     files = read_markdown_files(settings.NOTE_LOCAL_PATH, settings.NOTE_FILE_GLOB)
     indexed = note_indexer.rebuild_index(files)

@@ -25,7 +25,13 @@ class GitSync:
     def _open_repo(self) -> Optional[Repo]:
         """打开已有仓库，若不是 git 仓库则返回 None"""
         try:
-            return Repo(self.local_path)
+            repo = Repo(self.local_path)
+            # 关键修复：确保找到的 git 仓库根目录与 local_path 一致
+            # 防止 local_path 仅仅是主项目的一个子目录时，误操作了主项目仓库
+            if Path(repo.working_dir).resolve() != self.local_path.resolve():
+                print(f"GitSync Warning: Found repo at {repo.working_dir} but expected at {self.local_path}. Treating as no repo.")
+                return None
+            return repo
         except (InvalidGitRepositoryError, GitCommandError, OSError):
             return None
 
@@ -42,21 +48,36 @@ class GitSync:
 
         # 空目录或非 git 目录，执行 clone
         try:
+            print(f"GitSync: Cloning from {self.repo_url} to {self.local_path}...")
             repo = Repo.clone_from(self.repo_url, self.local_path, branch=self.branch)
             return repo
-        except Exception:
+        except Exception as e:
+            print(f"GitSync Clone Error: {e}")
             return None
 
     def pull(self) -> bool:
         """执行 pull，失败返回 False"""
-        repo = self.ensure_repo()
-        if not repo:
-            return False
         try:
+            repo = self.ensure_repo()
+            if not repo:
+                print(f"GitSync Error: Repo not found or invalid. URL: {self.repo_url}, Path: {self.local_path}")
+                return False
+            
+            # 记录当前 HEAD
+            old_commit = repo.head.commit.hexsha
+            
             repo.git.checkout(self.branch)
             repo.remote().pull()
+            
+            new_commit = repo.head.commit.hexsha
+            if old_commit != new_commit:
+                print(f"GitSync: Pulled changes from {old_commit[:7]} to {new_commit[:7]}")
+            else:
+                print("GitSync: Already up to date.")
+                
             return True
-        except Exception:
+        except Exception as e:
+            print(f"GitSync Exception during pull: {e}")
             return False
 
     def commit_and_push(self, message: str = "auto sync") -> bool:

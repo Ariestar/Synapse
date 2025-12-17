@@ -7,7 +7,7 @@
 <div 
     x-data="noteViewer()"
     x-init="init()"
-    class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8"
+    class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8"
 >
     <!-- Toolbar -->
     <div class="flex justify-between items-center mb-6">
@@ -56,13 +56,31 @@
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden min-h-[500px]">
         
         <!-- Header -->
-        <div class="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
+        <div x-show="!isEditing" class="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
             <h1 class="text-3xl font-bold text-gray-900 mb-2" x-text="title || '加载中...'"></h1>
             <div class="flex flex-wrap items-center gap-2 text-sm text-gray-500">
                 <span x-text="currentPath || ''" class="font-mono text-xs"></span>
                 <template x-for="tag in tags" :key="tag">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-800" x-text="tag"></span>
                 </template>
+            </div>
+        </div>
+
+        <!-- Note Header Inputs (Visible in Editing Mode) -->
+        <div x-show="isEditing" class="px-4 py-4 border-b border-gray-100 bg-gray-50/50 space-y-4">
+            <div>
+                <input type="text" x-model="newTitle" placeholder="笔记标题" class="w-full text-3xl font-bold bg-transparent border-none focus:ring-0 placeholder-gray-300 p-0" autofocus>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="text" x-model="newTags" placeholder="标签 (逗号分隔)" class="flex-1 text-sm bg-white border border-gray-200 rounded-md px-3 py-1.5 focus:border-black focus:ring-black">
+                <!-- Subdir only for new notes -->
+                <select x-show="isNew" x-model="newSubdir" class="text-sm bg-white border border-gray-200 rounded-md px-3 py-1.5 focus:border-black focus:ring-black">
+                     <option value="">根目录</option>
+                     <option value="Chat">Chat</option>
+                     <option value="学习笔记">学习笔记</option>
+                     <option value="技术文档">技术文档</option>
+                     <option value="随笔">随笔</option>
+                </select>
             </div>
         </div>
 
@@ -76,26 +94,28 @@
         <!-- Edit Mode -->
         <div 
             x-show="isEditing"
-            class="flex flex-col md:flex-row h-[calc(100vh-300px)] min-h-[500px]"
+            class="flex flex-col md:flex-row h-[calc(100vh-300px)] min-h-[500px] border-t border-gray-100"
             style="display: none;"
         >
             <!-- Editor -->
-            <div class="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-gray-200">
-                <div class="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider">Markdown 编辑</div>
+            <div class="flex-1 flex flex-col border-b md:border-b-0 md:border-r border-gray-200 min-w-0">
+                <div class="px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider flex justify-between items-center">
+                    <span>Markdown 编辑</span>
+                </div>
                 <textarea 
                     x-model="editorContent"
                     @input="debounceUpdatePreview()"
-                    class="flex-1 w-full p-4 resize-none font-mono text-sm bg-gray-50 focus:outline-none focus:bg-white transition-colors"
+                    class="flex-1 w-full p-4 resize-none font-mono text-sm bg-white focus:outline-none transition-colors"
                     placeholder="# 输入 Markdown 内容..."
                 ></textarea>
             </div>
             
             <!-- Preview -->
-            <div class="flex-1 flex flex-col bg-white">
-                <div class="px-4 py-2 bg-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">实时预览</div>
+            <div class="flex-1 flex flex-col bg-gray-50/30 min-w-0">
+                <div class="px-4 py-2 bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider border-l border-gray-200">实时预览</div>
                 <div 
                     id="note-preview" 
-                    class="flex-1 p-4 overflow-y-auto markdown-body"
+                    class="flex-1 p-4 overflow-y-auto markdown-body bg-transparent"
                 ></div>
             </div>
         </div>
@@ -104,7 +124,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="../static/js/mathjax_helper.js"></script>
+<script src="{{ url_for('static', filename='js/mathjax_helper.js') }}"></script>
 <script>
     function noteViewer() {
         return {
@@ -113,20 +133,40 @@
             tags: [],
             editorContent: '',
             isEditing: false,
+            isNew: false, // New flag
             originalContent: '',
+            
+            // New Note Inputs
+            newTitle: '',
+            newTags: '',
+            newSubdir: '',
             
             init() {
                 const params = new URLSearchParams(window.location.search);
                 const path = params.get('path');
-                if (path) {
+                const mode = params.get('mode');
+                
+                if (mode === 'new') {
+                    this.initNewNote();
+                } else if (path) {
                     this.loadNote(path);
                 } else {
                     this.title = '未指定笔记路径';
                 }
             },
             
+            initNewNote() {
+                this.isNew = true;
+                this.isEditing = true;
+                this.title = '新建笔记';
+                this.editorContent = '';
+                this.originalContent = '';
+                // Optional: set default subdir if needed
+            },
+            
             async loadNote(path) {
                 this.currentPath = path;
+                this.isNew = false;
                 try {
                     const resp = await fetch(`/api/md/file?path=${encodeURIComponent(path)}`);
                     if (!resp.ok) throw new Error('Note not found');
@@ -134,6 +174,11 @@
                     
                     this.title = data.frontmatter?.title || path.split('/').pop();
                     this.tags = this.normalizeTags(data.frontmatter?.tags);
+                    
+                    // Initialize inputs for editing
+                    this.newTitle = this.title;
+                    this.newTags = this.tags.join(', ');
+                    
                     this.originalContent = data.content || '';
                     this.editorContent = this.originalContent;
                     
@@ -154,30 +199,114 @@
             
             enterEditMode() {
                 this.isEditing = true;
+                // If existing note, strip frontmatter from editor to avoid confusion, 
+                // OR keep it but update it on save. 
+                // Decision: Keep it in editor for advanced users, but update it programmatically on save.
+                // Actually, if we show inputs, we should probably hide frontmatter in editor or sync them.
+                // Simple approach: Keep editor as is (full content), but on save, update title/tags in the yaml.
+                
                 this.$nextTick(() => {
                     this.render(this.editorContent, 'note-preview');
                 });
             },
             
             exitEditMode() {
+                if (this.isNew) {
+                    history.back();
+                    return;
+                }
                 this.isEditing = false;
                 this.editorContent = this.originalContent;
+                // Reset inputs
+                this.newTitle = this.title;
+                this.newTags = this.tags.join(', ');
             },
             
             async saveNote() {
+                if (this.isNew) {
+                    await this.createNote();
+                    return;
+                }
+                
                 if (!this.currentPath) return;
                 try {
+                    // Update Frontmatter in editorContent based on inputs
+                    let content = this.editorContent;
+                    const title = this.newTitle.trim();
+                    const tags = this.newTags.split(/[,，\s]+/).filter(t => t.trim());
+                    
+                    // Simple YAML replacement/insertion
+                    // Regex to find frontmatter
+                    const fmRegex = /^---\s*\n([\s\S]*?)\n---\s*\n/;
+                    const match = content.match(fmRegex);
+                    
+                    let newFm = '';
+                    let body = content;
+                    
+                    if (match) {
+                        // Update existing frontmatter
+                        let fmStr = match[1];
+                        // Replace title
+                        if (fmStr.includes('title:')) {
+                            fmStr = fmStr.replace(/^title:.*$/m, `title: ${title}`);
+                        } else {
+                            fmStr += `\ntitle: ${title}`;
+                        }
+                        // Replace tags
+                        if (fmStr.includes('tags:')) {
+                             // Handle array format or list format in YAML is complex with regex. 
+                             // Simplification: Remove lines starting with tags: and append new tags
+                             // This is risky if user used complex yaml.
+                             // Safer: Use a simple YAML parser or standard format enforcement.
+                             // Let's assume standard format generated by our app.
+                             // Just overwrite the whole frontmatter block with new values preserving other keys is hard without a parser.
+                             
+                             // Alternative: Since we are in browser, we don't have python's yaml.
+                             // Let's just reconstruct standard frontmatter if it matches our standard.
+                             // Or better: pass title/tags separately to backend PUT? No, backend expects content.
+                             
+                             // Hacky but robust enough for our simple usage:
+                             // 1. Extract body (remove frontmatter)
+                             // 2. Re-generate frontmatter with new title/tags + any other keys preserved?
+                             // Preserving other keys is the hard part.
+                             
+                             // For now, let's just do a simple string replace for title and tags lines if they exist.
+                             fmStr = fmStr.replace(/^title:.*$/m, `title: ${title}`);
+                             // Remove existing tags line(s) - this is tricky for multi-line tags.
+                             // Assume single line [tag1, tag2] for simplicity as generated by us.
+                             fmStr = fmStr.replace(/^tags:.*$/m, `tags: [${tags.join(', ')}]`);
+                             
+                             // If tags didn't exist, append
+                             if (!fmStr.includes('tags:')) {
+                                 fmStr += `\ntags: [${tags.join(', ')}]`;
+                             }
+                             
+                             newFm = `---\n${fmStr}\n---\n`;
+                             body = content.replace(fmRegex, '');
+                        }
+                    } else {
+                        // No frontmatter, create it
+                        newFm = `---\ntitle: ${title}\ntags: [${tags.join(', ')}]\ndate: ${new Date().toLocaleString()}\nstatus: publish\n---\n\n`;
+                    }
+                    
+                    const finalContent = newFm + body;
+
                     const resp = await fetch('/api/md/file', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             path: this.currentPath, 
-                            content: this.editorContent 
+                            content: finalContent 
                         })
                     });
                     if (!resp.ok) throw new Error(await resp.text());
                     
-                    this.originalContent = this.editorContent;
+                    // Update state
+                    this.title = title;
+                    this.tags = tags;
+                    this.originalContent = finalContent;
+                    this.editorContent = finalContent;
+                    
                     this.isEditing = false;
                     this.render(this.originalContent, 'note-body');
                     alert('已保存');
@@ -186,6 +315,39 @@
                 }
             },
             
+            async createNote() {
+                if (!this.newTitle.trim()) {
+                    alert('请输入标题');
+                    return;
+                }
+                
+                try {
+                    const tags = this.newTags.split(/[,，\s]+/).filter(t => t.trim());
+                    const response = await fetch('/api/md/file', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: this.newTitle.trim(),
+                            content: this.editorContent, // Body only
+                            tags: tags,
+                            subdir: this.newSubdir || undefined
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const res = await response.json();
+                        alert(`已创建：${res.path}`);
+                        // Redirect to view the new note
+                        window.location.href = `/notes_view.html?path=${encodeURIComponent(res.path)}`;
+                    } else {
+                        const err = await response.json();
+                        alert(`创建失败: ${err.error || '未知错误'}`);
+                    }
+                } catch (e) {
+                    alert(`出错: ${e.message}`);
+                }
+            },
+
             async copyMarkdown() {
                 try {
                     await navigator.clipboard.writeText(this.originalContent);
@@ -198,9 +360,6 @@
             render(content, elementId) {
                 const el = document.getElementById(elementId);
                 if (!el) return;
-                
-                // 去除 YAML Frontmatter
-                content = content.replace(/^---\s*[\s\S]*?\s*---\s*/, '');
                 
                 if (typeof marked !== 'undefined') {
                     let html = marked.parse(content);

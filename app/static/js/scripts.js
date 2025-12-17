@@ -1673,6 +1673,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     function renderMarkdown(text) {
         if (!text) return '';
         
+        // 去除 YAML Frontmatter (metadata)
+        text = text.replace(/^---\s*[\s\S]*?\s*---\s*/, '');
+        
         // 如果 marked 库已加载，使用它来渲染
         if (typeof marked !== 'undefined') {
             // 提前提取 $$...$$ 块（整行公式），避免 marked 将 \\ 转为 <br>

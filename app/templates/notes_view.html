@@ -199,6 +199,9 @@
                 const el = document.getElementById(elementId);
                 if (!el) return;
                 
+                // 去除 YAML Frontmatter
+                content = content.replace(/^---\s*[\s\S]*?\s*---\s*/, '');
+                
                 if (typeof marked !== 'undefined') {
                     let html = marked.parse(content);
                     if (typeof DOMPurify !== 'undefined') {

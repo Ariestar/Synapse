@@ -13,7 +13,7 @@
             </div>
             <input 
                 type="text" 
-                id="search-notes" 
+                x-model.debounce.300ms="searchQuery"
                 placeholder="筛选笔记..." 
                 class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-black focus:border-black sm:text-sm"
             >
@@ -99,11 +99,37 @@
     </div>
     
     <!-- Notes Grid -->
-    <div id="notes-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- Notes will be injected here by JS -->
-        <div class="col-span-full text-center py-12">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Loading State -->
+        <div x-show="loading" class="col-span-full text-center py-12">
             <p class="text-gray-500 text-lg">正在加载笔记...</p>
         </div>
+
+        <!-- Empty State -->
+        <div x-show="!loading && filteredNotes.length === 0" class="col-span-full text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+            <p class="text-gray-500">暂无笔记</p>
+            <button class="mt-4 text-blue-600 hover:text-black font-medium" @click="$dispatch('open-new-note')">创建第一篇笔记</button>
+        </div>
+
+        <!-- Notes List -->
+        <template x-for="note in filteredNotes" :key="note.path">
+            <div 
+                @click="window.location.href = `/notes_view.html?path=${encodeURIComponent(note.path)}`"
+                class="group bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md hover:border-black transition-all cursor-pointer flex flex-col h-full"
+            >
+                <h3 class="text-lg font-bold text-gray-900 mb-2 line-clamp-1 group-hover:text-blue-600 transition-colors" x-text="note.title || '未命名'"></h3>
+                <div class="text-sm text-gray-500 mb-4 line-clamp-4 flex-grow" x-text="getSnippet(note.content)"></div>
+                <div class="flex flex-wrap gap-2 mt-auto">
+                    <template x-for="tag in normalizeTags(note.tags)" :key="tag">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800" x-text="tag"></span>
+                    </template>
+                </div>
+                <div class="flex justify-between text-xs text-gray-400 mt-4 pt-4 border-t border-gray-50">
+                    <span x-text="note.status || 'Active'"></span>
+                    <span class="truncate ml-2" x-text="note.path"></span>
+                </div>
+            </div>
+        </template>
     </div>
 </div>
 {% endblock %}
@@ -238,7 +264,7 @@
                         const res = await response.json();
                         alert(`已创建：${res.path}`);
                         this.close();
-                        loadNotes(); // Refresh grid
+                        window.dispatchEvent(new CustomEvent('reload-notes'));
                     } else {
                         alert('创建失败');
                     }
@@ -253,22 +279,64 @@
 
     function notesPage() {
         return {
-            // Page logic if any
+            notes: [],
+            searchQuery: '',
+            loading: true,
+
+            init() {
+                this.loadNotes();
+                window.addEventListener('reload-notes', () => this.loadNotes());
+            },
+
+            async loadNotes() {
+                this.loading = true;
+                try {
+                    const response = await fetch('/api/md/files');
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.notes = data.result || [];
+                    }
+                } catch (error) {
+                    console.error('Failed to load notes:', error);
+                    alert('加载笔记失败');
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            get filteredNotes() {
+                const query = this.searchQuery.trim().toLowerCase();
+                if (!query) return this.notes;
+                
+                return this.notes.filter(n => {
+                    const title = (n.title || '').toLowerCase();
+                    const tags = this.normalizeTags(n.tags).join(',').toLowerCase();
+                    const path = (n.path || '').toLowerCase();
+                    const content = (n.content || '').toLowerCase();
+                    return title.includes(query) || tags.includes(query) || path.includes(query) || content.includes(query);
+                });
+            },
+
+            normalizeTags(tags) {
+                if (!tags) return [];
+                if (Array.isArray(tags)) return tags;
+                if (typeof tags === 'string') return tags.split(/[,，\s]+/).filter(Boolean);
+                return [];
+            },
+
+            getSnippet(content) {
+                if (!content) return '';
+                // 去除 YAML frontmatter
+                let text = content.replace(/^---\s*[\s\S]*?\s*---\s*/, '');
+                // 简单去除 markdown 符号 (可以按需增强)
+                text = text.replace(/[#*`]/g, '');
+                return text.slice(0, 150) + (text.length > 150 ? '...' : '');
+            }
         };
     }
 
-    // Legacy JS logic adapted
-    const API_BASE_URL = '/api';
-    const MD_LIST_API = '/api/md/files';
-    
-    const notesContainer = document.getElementById('notes-container');
-    const searchInput = document.getElementById('search-notes');
-    let mdFiles = [];
-
+    // Brainstorm logic (adapted for Alpine/Vanilla hybrid if needed, keeping independent for now)
     document.addEventListener('DOMContentLoaded', function() {
-        loadNotes();
-        searchInput.addEventListener('input', debounce(searchNotes, 300));
-        
         // Brainstorm logic
         const brainstormBtn = document.getElementById('brainstorm-btn');
         const brainstormModal = document.getElementById('brainstorm-modal');
@@ -289,79 +357,8 @@
         }
     });
 
-    async function loadNotes() {
-        try {
-            const response = await fetch(MD_LIST_API);
-            if (response.ok) {
-                const data = await response.json();
-                mdFiles = data.result || [];
-                displayNotes(mdFiles);
-            }
-        } catch (error) {
-            notesContainer.innerHTML = '<div class="col-span-full text-center text-red-500">加载失败</div>';
-        }
-    }
-
-    function displayNotes(notes) {
-        if (!notes || notes.length === 0) {
-            notesContainer.innerHTML = `
-                <div class="col-span-full text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                    <p class="text-gray-500">暂无笔记</p>
-                    <button class="mt-4 text-blue-600 hover:text-black font-medium" onclick="window.dispatchEvent(new CustomEvent('open-new-note'))">创建第一篇笔记</button>
-                </div>
-            `;
-            return;
-        }
-        
-        notesContainer.innerHTML = '';
-        notes.forEach(note => {
-            const normalizedTags = Array.isArray(note.tags) ? note.tags : (typeof note.tags === 'string' ? note.tags.split(/[,，\s]+/).filter(Boolean) : []);
-            
-            const card = document.createElement('div');
-            // Tailwind classes for card
-            card.className = 'group bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md hover:border-black transition-all cursor-pointer flex flex-col h-full';
-            card.innerHTML = `
-                <h3 class="text-lg font-bold text-gray-900 mb-2 line-clamp-1 group-hover:text-blue-600 transition-colors">${note.title || '未命名'}</h3>
-                <div class="text-sm text-gray-500 mb-4 line-clamp-4 flex-grow">${note.path || ''}</div>
-                <div class="flex flex-wrap gap-2 mt-auto">
-                    ${normalizedTags.map(tag => `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">${tag}</span>`).join('')}
-                </div>
-                <div class="flex justify-between text-xs text-gray-400 mt-4 pt-4 border-t border-gray-50">
-                    <span>${note.status || 'Active'}</span>
-                    <span class="truncate ml-2">${note.path}</span>
-                </div>
-            `;
-            card.addEventListener('click', () => window.location.href = `/notes_view.html?path=${encodeURIComponent(note.path)}`);
-            notesContainer.appendChild(card);
-        });
-    }
-
-    function searchNotes() {
-        const query = searchInput.value.trim().toLowerCase();
-        if (!query) {
-            displayNotes(mdFiles);
-            return;
-        }
-        const filtered = mdFiles.filter(n => {
-            const title = (n.title || '').toLowerCase();
-            const tags = (n.tags || []).join(',').toLowerCase();
-            const path = (n.path || '').toLowerCase();
-            const content = (n.content || '').toLowerCase();
-            return title.includes(query) || tags.includes(query) || path.includes(query) || content.includes(query);
-        });
-        displayNotes(filtered);
-    }
-
-    function debounce(func, delay) {
-        let timeoutId;
-        return function (...args) {
-            clearTimeout(timeoutId);
-            timeoutId = setTimeout(() => func.apply(this, args), delay);
-        };
-    }
-
-    // Brainstorm logic
     async function runBrainstorm() {
+
         const btn = document.getElementById('brainstorm-btn');
         const mode = document.getElementById('brainstorm-mode').value;
         const modal = document.getElementById('brainstorm-modal');

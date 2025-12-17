@@ -1,4 +1,7 @@
 function renderMarkdownWithMath(md, targetSelector) {
+  // 去除 YAML Frontmatter
+  md = (md || '').replace(/^---\s*[\s\S]*?\s*---\s*/, '');
+
   const el = document.querySelector(targetSelector);
   if (!el) return;
 
